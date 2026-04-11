@@ -1,0 +1,9 @@
+<library path="damiao_hardware_interface">
+  <class name="damiao_hardware_interface/RobotSystem"
+         type="damiao_hardware_interface::RobotSystem"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Robot hardware plugin for 6 dof manipulator + 1 dof parallel gripper using Damiao motors.
+    </description>
+  </class>
+</library>
