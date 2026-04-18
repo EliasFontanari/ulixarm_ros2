@@ -13,15 +13,81 @@ namespace damiao_hardware_interface
             return CallbackReturn::ERROR;
         }
 
-        // input params
-        // this->gear_pinion_module = info_.hardware_parameters.at("gear_pinion_module");
-        // this->gear_pinion_number_teeth  = info_.hardware_parameters.at("gear_pinion_number_teeth");
+        // Read robot_description
+        auto node = rclcpp::Node::make_shared("hf_robot_descritption_listener");
 
-        this->gear_pinion_module = 0.001f;
-        this->gear_pinion_number_teeth = 14.0f;
+        node->declare_parameter("robot_description", std::string(""));
+        std::string urdf_string = node->get_parameter("robot_description")
+                                    .get_value<std::string>();
 
-        this->gear_pinion_rot_to_lin = (-1.0f)*(this->gear_pinion_module*this->gear_pinion_number_teeth) / 2.0f;
-        this->gear_pinion_lin_to_rot = 1.0f / this->gear_pinion_rot_to_lin;
+        if (urdf_string.empty()) {
+            RCLCPP_ERROR(get_logger(), "robot_description is empty!");
+            return CallbackReturn::ERROR;
+        }
+        
+        pinocchio::urdf::buildModelFromXML(urdf_string, pin_model_);
+        pin_data_ = pinocchio::Data(pin_model_);
+
+
+        // import params from file
+        motor_kp_.resize(info_.joints.size());
+        motor_kd_.resize(info_.joints.size());
+
+        for (size_t i = 0; i < info_.joints.size(); i++)
+        {
+            const auto & joint = info_.joints[i];
+
+            // Read Kp
+            if (joint.parameters.find("Kp") != joint.parameters.end())
+                motor_kp_[i] = static_cast<float>(std::stod(joint.parameters.at("Kp")));
+            else {
+                RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kp!", joint.name.c_str());
+                return CallbackReturn::ERROR;
+            }
+
+            // Read Kd
+            if (joint.parameters.find("Kd") != joint.parameters.end())
+                motor_kd_[i] = static_cast<float>(std::stod(joint.parameters.at("Kd")));
+            else {
+                RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kd!", joint.name.c_str());
+                return CallbackReturn::ERROR;
+            }
+
+            RCLCPP_INFO(get_logger(), "Joint '%s' — Kp: %.2f  Kd: %.2f",
+                joint.name.c_str(), motor_kp_[i], motor_kd_[i]);
+        }
+
+
+        // gravity compensation flag
+        use_gravity_compensation_ = true; // default
+
+        if (info_.hardware_parameters.find("use_gravity_compensation") != 
+            info_.hardware_parameters.end())
+        {
+            use_gravity_compensation_ = 
+                info_.hardware_parameters.at("use_gravity_compensation") == "true";
+        }
+        
+        
+        // free floating flag
+        use_free_floating_ = false; // default
+        
+        if (info_.hardware_parameters.find("use_free_floating") != 
+            info_.hardware_parameters.end())
+        {
+            use_free_floating_ = 
+                info_.hardware_parameters.at("use_free_floating") == "true";
+            if (use_free_floating_) {
+                use_gravity_compensation_ = true;
+            }
+        }
+
+        RCLCPP_INFO(get_logger(), "Gravity compensation: %s", 
+            use_gravity_compensation_ ? "ENABLED" : "DISABLED");
+
+        RCLCPP_INFO(get_logger(), "Free Floating: %s", 
+            use_free_floating_ ? "ENABLED" : "DISABLED");
+
 
         // open serial port
         const std::string port = info_.hardware_parameters.at("serial_port");
@@ -67,7 +133,7 @@ namespace damiao_hardware_interface
             set_state(name, 0.0);
         }
 
-        // ATTENTION! overwrite the positions with actual ones
+        // ATTENTION! overwrite the positions with ones from hardware sensors
         for (std::size_t i = 0; i < (info_.joints.size()-1); i++)
         {
             const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
@@ -80,22 +146,11 @@ namespace damiao_hardware_interface
         set_state(name_pos, static_cast<double>(pos));
         set_command(name_pos, static_cast<double>(pos));
 
-        // Load pinocchio model from URDF
-        pinocchio::urdf::buildModel(urdf_path_, pin_model_);
-        pin_data_ = pinocchio::Data(pin_model_);
-
-        double total_mass = 0.0;
-        for (int i = 0; i < pin_model_.nbodies; i++)
-            total_mass += pin_model_.inertias[i].mass();
-        RCLCPP_INFO(get_logger(), "Total mass seen by pinocchio: %.3f kg", total_mass);
-
         return CallbackReturn::SUCCESS;
     }
 
     return_type RobotSystem::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
     {
-        // rclcpp::Logger my_logger = rclcpp::get_logger("write_logger");
-
         /*************************
          *      MANIPULATOR
          *************************/
@@ -154,38 +209,12 @@ namespace damiao_hardware_interface
             this->gripper_force_closure_ = true;
         }
 
-
-        // RCLCPP_INFO(my_logger, "\t\tq7_lin: %f\t\tq7_rot: %f\t\teffort: %f Nm",
-        //             pos, this->motors[6].Get_Position(), effort_rot);
-
-
         return return_type::OK;
     }
 
     return_type RobotSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
     {
         // rclcpp::Logger my_logger = rclcpp::get_logger("write_logger");
-
-        // /*************************
-        //  *      MANIPULATOR
-        //  *************************/
-        // for (std::size_t i = 0; i < (info_.joints.size()-1); i++)
-        // {
-        //     const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
-        //     const auto name_vel = info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY;
-        //     const float pos = static_cast<float> (get_command(name_pos));
-        //     const float vel = static_cast<float> (get_command(name_vel));
-
-        //     this->dm.control_mit(
-        //       this->motors[i], 
-        //       this->motor_kp[i], 
-        //       this->motor_kd[i], 
-        //       pos,
-        //       vel,
-        //       0.0f // tau
-        //     );
-        // }
-
 
         /*************************
          *      MANIPULATOR
@@ -194,14 +223,11 @@ namespace damiao_hardware_interface
 
         // --- Build q, v=0, a=0 vectors for pinocchio ---
         Eigen::VectorXd q = pinocchio::neutral(pin_model_);
-        // Eigen::VectorXd v = Eigen::VectorXd::Zero(pin_model_.nv);
-        // Eigen::VectorXd a = Eigen::VectorXd::Zero(pin_model_.nv);
 
         for (std::size_t i = 0; i < n_manip; i++)
         {
             const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
-            // Read current STATE position (not command) for gravity compensation
-            q[i] = get_state(name_pos); // or hw_positions_[i] depending on your interface
+            q[i] = get_state(name_pos);
         }
 
         // --- Compute gravity torques: g(q) = RNEA(q, 0, 0) ---
@@ -218,23 +244,35 @@ namespace damiao_hardware_interface
             const float vel     = static_cast<float>(get_command(name_vel));
             const float tau_ff  = static_cast<float>(tau_gravity[i]);
 
-            
-            this->dm.control_mit(
-                this->motors[i],
-                this->motor_kp[i],
-                this->motor_kd[i],
-                pos,
-                vel,
-                tau_ff   // gravity compensation feedforward
-            );
-            // this->dm.control_mit(
-            //     this->motors[i],
-            //     0.0f,
-            //     0.0f,
-            //     0.0f,
-            //     0.0f,
-            //     tau_ff   // gravity compensation feedforward
-            // );
+            if (use_gravity_compensation_ && !use_free_floating_) {
+                this->dm.control_mit(
+                    this->motors[i],
+                    this->motor_kp_[i],
+                    this->motor_kd_[i],
+                    pos,
+                    vel,
+                    tau_ff   // gravity compensation feedforward
+                );
+            } else if (use_gravity_compensation_ && use_free_floating_) {
+                this->dm.control_mit(
+                    this->motors[i],
+                    0.0f,
+                    0.2f*this->motor_kd_[i],
+                    0.0f,
+                    0.0f,
+                    tau_ff   // gravity compensation feedforward
+                );
+            } else {
+                this->dm.control_mit(
+                    this->motors[i],
+                    this->motor_kp_[i],
+                    this->motor_kd_[i],
+                    pos,
+                    vel,
+                    0.0f
+                );
+            }       
+
         }
 
         // /*************************
@@ -277,8 +315,8 @@ namespace damiao_hardware_interface
 
         this->dm.control_mit(
             this->motors[6],
-            this->motor_kp[6],
-            this->motor_kd[6],
+            this->motor_kp_[6],
+            this->motor_kd_[6],
             q7_rot,
             0.0f,
             0.0f // tau

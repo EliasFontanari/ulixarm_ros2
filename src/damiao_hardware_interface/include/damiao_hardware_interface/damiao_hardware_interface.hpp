@@ -39,49 +39,46 @@ using hardware_interface::return_type;
 
 namespace damiao_hardware_interface
 {
-    using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-    class RobotSystem : public hardware_interface::SystemInterface
-    {
-        public:
-            CallbackReturn on_init(
-            const hardware_interface::HardwareComponentInterfaceParams & params) override;
+class RobotSystem : public hardware_interface::SystemInterface
+{
+    public:
+        CallbackReturn on_init(
+        const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
-            CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
+        CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
 
-            return_type read(const rclcpp::Time & time, const rclcpp::Duration & period) override;
+        return_type read(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
-            return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
+        return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
 
-        protected:
-            std::shared_ptr<SerialPort> serial;
-            damiao::Motor_Control dm;
-            std::vector<damiao::Motor> motors;
+    protected:
+        std::shared_ptr<SerialPort> serial;
+        damiao::Motor_Control dm;
+        std::vector<damiao::Motor> motors;
 
-            const std::vector<float> motor_kp = {
-                300.0, 400.0, 300.0, 200.0, 50.0, 50.0, 0.4
-            };
+        std::vector<float> motor_kp_;
+        std::vector<float> motor_kd_;
 
-            const std::vector<float> motor_kd = {
-                2.0, 2.5, 2.0, 1.5, 1.0, 0.25, 0.1
-            };
+        bool use_gravity_compensation_;
+        bool use_free_floating_;
 
-            float gear_pinion_module = 0.0f;
-            float gear_pinion_number_teeth = 0.0f;
-            float gear_pinion_lin_to_rot = 0.0f;
-            float gear_pinion_rot_to_lin = 0.0f;
+        // const float gear_pinion_module = 0.001f;
+        // const float gear_pinion_number_teeth = 14.0f;
+        // (-0.5f)*(this->gear_pinion_module*this->gear_pinion_number_teeth);
+        // 1.0f / this->gear_pinion_rot_to_lin;
+        const float gear_pinion_rot_to_lin = -0.007f;
+        const float gear_pinion_lin_to_rot = 142.857142857f;
 
-            float gripper_hold_position_ = 0.0f;   // rotational position to hold on stall
-            bool  gripper_force_closure_ = false;   // latched stall flag
-            int  gripper_force_closure_counter_ = 0;
+        float gripper_hold_position_ = 0.0f;   // rotational position to hold on stall
+        bool  gripper_force_closure_ = false;   // latched stall flag
+        int  gripper_force_closure_counter_ = 0;
 
-            pinocchio::Model pin_model_;
-            pinocchio::Data  pin_data_;
+        pinocchio::Model pin_model_;
+        pinocchio::Data  pin_data_;
 
-            // path to your URDF (set in on_init or on_configure)
-            std::string urdf_path_ = 
-                "/home/ostif/ulixarm_description/src/ulixarm_description/urdf/robot.urdf";
-    };
+};
 
 }  // namespace damiao_hardware_interface
 
