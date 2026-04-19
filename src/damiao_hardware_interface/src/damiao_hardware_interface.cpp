@@ -74,14 +74,37 @@ namespace damiao_hardware_interface
             if (info_.hardware_parameters.find("use_gravity_compensation") != 
                 info_.hardware_parameters.end())
             {
-                use_gravity_compensation_ = 
+                this->use_gravity_compensation_ = 
                     info_.hardware_parameters.at("use_gravity_compensation") == "true";
             } else {
-                use_gravity_compensation_ = true; // default
+                this->use_gravity_compensation_ = true; // default
             }
             
             RCLCPP_INFO(get_logger(), "Gravity compensation: %s", 
-                use_gravity_compensation_ ? "ENABLED" : "DISABLED");
+                this->use_gravity_compensation_ ? "ENABLED" : "DISABLED");
+        }
+
+        // Load free floating flag
+        {
+            if (info_.hardware_parameters.find("use_free_floating") != 
+                info_.hardware_parameters.end())
+            {
+                this->use_free_floating_ = 
+                    info_.hardware_parameters.at("use_free_floating") == "true";
+            } else {
+                this->use_free_floating_ = false; // default
+            }
+
+            if (this->use_free_floating_ && !this->use_gravity_compensation_)
+            {
+                this->use_gravity_compensation_ = true;
+                
+                RCLCPP_WARN(get_logger(), 
+                    "Switching gravity compensation if in free floating mode");
+            }
+            
+            RCLCPP_INFO(get_logger(), "Free floating: %s", 
+                this->use_free_floating_ ? "ENABLED" : "DISABLED");
         }
 
         // Load serial params
@@ -306,20 +329,27 @@ namespace damiao_hardware_interface
 
             const double tau_ff = tau_gravity[i];   // feed forward torque
 
-            this->mc->control_mit(
-                joint_name,
-                this->motor_kp_[i],
-                this->motor_kd_[i],
-                pos,
-                vel,
-                tau_ff
-            );
-        }
-
-        // read the response of each motor
-        for (std::size_t i=0; i < this->manipulator_joint_names_.size(); i++)
-        {
-            this->mc->receive_motor_status();
+            if (this->use_free_floating_)
+            {
+                this->mc->control_mit(
+                    joint_name,
+                    0.0,
+                    this->motor_kd_[i]*0.1,
+                    0.0,
+                    0.0,
+                    tau_ff
+                );
+            } else {
+                this->mc->control_mit(
+                    joint_name,
+                    this->motor_kp_[i],
+                    this->motor_kd_[i],
+                    pos,
+                    vel,
+                    tau_ff
+                );
+            }
+            
         }
 
         return return_type::OK;

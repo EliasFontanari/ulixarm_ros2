@@ -82,6 +82,7 @@ class RobotSystem : public hardware_interface::SystemInterface
 
     // flags
     bool use_gravity_compensation_;
+    bool use_free_floating_;
 
 };
 

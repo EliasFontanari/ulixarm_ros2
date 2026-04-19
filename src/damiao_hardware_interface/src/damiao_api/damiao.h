@@ -13,29 +13,12 @@
 
 namespace damiao
 {
-#pragma pack(1)
 
-#define MotorID uint32_t
+using MotorID = uint32_t;
 
-enum DMMotorType
-{
-    DM4310,
-    DM4310_48V,
-    DM4340,
-    DM4340_48V,
-    DM6006,
-    DM8006,
-    DM8009,
-    DM10010L,
-    DM10010,
-    DMH3510,
-    DMH6215,
-    DMG6220,
-    DMJ3507,
-    NUM_OF_MOTORS
-};
+#pragma pack(push, 1)
 
-typedef struct CANReceiveFrame
+struct CANReceiveFrame
 {
     uint8_t FrameHeader;
     uint8_t CMD;
@@ -47,7 +30,7 @@ typedef struct CANReceiveFrame
     uint8_t frameEnd;
 };
 
-typedef struct CANSendFrame
+struct CANSendFrame
 {
     uint8_t FrameHeader[2] = {0x55, 0xAA};
     uint8_t FrameLen = 0x1e;
@@ -71,30 +54,28 @@ typedef struct CANSendFrame
 
 };
 
-#pragma pack()
+#pragma pack(pop)
 
-typedef struct LimitParam
+struct LimitParam
 {
     double q;
     double dq;
     double tau;
 };
 
-LimitParam limit_param[NUM_OF_MOTORS] =
+enum DMMotorType
 {
-    {12.5, 30, 10 }, // DM4310
-    {12.5, 50, 10 }, // DM4310_48V
-    {12.5, 8, 27 },  // DM4340
-    {12.5, 10, 27 }, // DM4340_48V
-    {12.5, 45, 20 }, // DM6006
-    {12.5, 45, 40 }, // DM8006
-    {12.5, 45, 54 }, // DM8009
-    {12.5,25,  200}, // DM10010L
-    {12.5,20, 200},  // DM10010
-    {12.5,280,1},    // DMH3510
-    {12.5,45,10},    // DMH6215
-    {12.5,45,10},     // DMG6220
-    {12.5, 8, 3}     // DMJ3507
+    DM4340,
+    DM4310,
+    DMJ3507,
+    NUM_OF_MOTORS
+};
+
+
+LimitParam limit_params[NUM_OF_MOTORS] = {
+    {12.5, 8.0, 28.0 },  // DM4340
+    {12.5, 30.0, 10.0 }, // DM4310
+    {12.5, 15.0, 3.0}     // DMJ3507
 };
 
 class Motor
@@ -105,7 +86,7 @@ public:
     : motor_type_(motor_type)
     , slave_id_(slave_id)
     , master_id_(master_id)
-    , limit_param_(damiao::limit_param[motor_type])
+    , limit_param_(damiao::limit_params[motor_type])
     {}
 
     Motor() = default;
@@ -314,6 +295,9 @@ class MotorControl
         // send to data
         this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
 
+        // recveive motor response
+        this->receive_motor_status();
+
         return;
     }
 
@@ -367,12 +351,11 @@ class MotorControl
     /************************
      *        UTILS
      ************************/
-    uint16_t double_to_uint(double x, double xmin, double xmax, uint8_t bits) 
+    uint16_t double_to_uint(double x, double xmin, double xmax, uint8_t bits)
     {
         double span = xmax - xmin;
-        double data_norm = (x - xmin) / span;
-        uint16_t data_uint = data_norm * ((1 << bits) - 1);
-        return data_uint;
+        double data_norm = std::clamp((x - xmin) / span, 0.0, 1.0);
+        return static_cast<uint16_t>(data_norm * ((1 << bits) - 1));
     }
 
     double uint_to_double(uint16_t x, double xmin, double xmax, uint8_t bits)
