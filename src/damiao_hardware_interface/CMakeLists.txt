@@ -39,7 +39,7 @@ add_library(
 
 target_include_directories(damiao_hardware_interface
   SYSTEM PRIVATE
-  src/DM_Motor_Control
+  src/damiao_api
 )
 
 target_compile_features(damiao_hardware_interface PUBLIC cxx_std_17)
@@ -64,10 +64,6 @@ install(
   DIRECTORY include/
   DESTINATION include/damiao_hardware_interface
 )
-# install(
-#   DIRECTORY launch
-#   DESTINATION share/damiao_hardware_interface
-# )
 
 install(TARGETS damiao_hardware_interface
   EXPORT export_damiao_hardware_interface
