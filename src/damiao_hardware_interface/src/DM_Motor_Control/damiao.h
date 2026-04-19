@@ -1,7 +1,7 @@
 #ifndef DAMIAO_H
 #define DAMIAO_H
 
-#include "SerialPort.h"
+#include "serial_port.h"
 #include <cmath>
 #include <utility>
 #include <vector>
@@ -14,6 +14,7 @@
 namespace damiao
 {
 #pragma pack(1)
+
 #define MotorID uint32_t
 
 enum DMMotorType
@@ -100,13 +101,14 @@ class Motor
 {
 public:
 
-    Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id) 
-    {
-        this->motor_type_ = motor_type;
-        this->slave_id_ = slave_id;
-        this->master_id_ = master_id;
-        this->limit_param_ = damiao::limit_param[motor_type];
-    }
+    Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id)
+    : motor_type_(motor_type)
+    , slave_id_(slave_id)
+    , master_id_(master_id)
+    , limit_param_(damiao::limit_param[motor_type])
+    {}
+
+    Motor() = default;
 
     DMMotorType get_motor_type() const { return this->motor_type_; }
 
@@ -123,9 +125,12 @@ public:
     void set_torque(double tau) { this->state_tau_ = tau; }
 
     double get_trot() const { return this->state_trot_; }
+    void set_trot(double trot) { this->state_trot_ = trot; }
+    
     double get_tmos() const { return this->state_tmos_; }
-
-    LimitParam get_limit_param() { return this->limit_param_; }
+    void set_tmos(double tmos) { this->state_tmos_ = tmos; }
+    
+    LimitParam get_limit_param() const { return this->limit_param_; }
 
 private:
     MotorID slave_id_;
@@ -134,11 +139,11 @@ private:
 
     LimitParam limit_param_{};
 
-    double state_q_  = 0.0f;
-    double state_dq_ = 0.0f;
-    double state_tau_= 0.0f;
-    double state_trot_ = 0.0f;
-    double state_tmos_ = 0.0f;
+    double state_q_  = 0.0;
+    double state_dq_ = 0.0;
+    double state_tau_= 0.0;
+    double state_trot_ = 0.0;
+    double state_tmos_ = 0.0;
 };
 
 
@@ -146,23 +151,18 @@ class MotorControl
 {
     public:
 
-    MotorControl(std::string port, speed_t baudrate)
-        : serial_(port, baudrate)
-    {
-        return;
+    MotorControl(const char* port, speed_t baudrate){
+        this->serial_.emplace(port, baudrate);
     }
-
-    ~MotorControl() 
-    {
-        return;
-    }
-
+    
+    ~MotorControl(){};
+    
     void add_motor(const std::string motor_name, const DMMotorType motor_type, 
         const MotorID slave_id, const MotorID master_id)
     {
         Motor motor(motor_type, slave_id, master_id);
         this->motors_[motor_name] = motor;
-        this->lut_slave_id_to_motor_name_[slave_id] = motor_name;
+        this->lut_master_id_to_motor_name_[master_id] = motor_name;
         return;
     }
     
@@ -170,13 +170,12 @@ class MotorControl
     {
         auto it = this->motors_.find(motor_name);
         if (it != this->motors_.end()) {
-            MotorID master_id = it->second.get_master_id();
+            MotorID slave_id = it->second.get_slave_id();
+            this->send_control_cmd(slave_id, 0xFC);
         } else {
             throw std::runtime_error("Name does not exist!");
-            return;
         }
 
-        this->send_control_cmd(master_id, 0xFC);
         return;
     }
 
@@ -193,13 +192,12 @@ class MotorControl
     {
         auto it = this->motors_.find(motor_name);
         if (it != this->motors_.end()) {
-            MotorID master_id = it->second.get_master_id();
+            MotorID slave_id = it->second.get_slave_id();
+            this->send_control_cmd(slave_id, 0xFD);
         } else {
             throw std::runtime_error("Name does not exist!");
-            return;
         }
 
-        this->send_control_cmd(master_id, 0xFD);
         return;
     }
 
@@ -214,22 +212,27 @@ class MotorControl
     
     void refresh_motor_status(const std::string motor_name)
     {
+        MotorID slave_id;
+
         auto it = this->motors_.find(motor_name);
         if (it != this->motors_.end()) {
-            MotorID slave_id = it->second.get_slave_id();
-            MotorID master_id = it->second.get_master_id();
+            slave_id = it->second.get_slave_id();
         } else {
             throw std::runtime_error("Name does not exist!");
+            return;
         }
         
         uint32_t id = 0x7FF;
         
         uint8_t can_low = slave_id & 0xff; // id low 8 bit
-        uint8_t can_high = (master_id >> 8) & 0xff; //id high 8 bit
+        uint8_t can_high = (slave_id >> 8) & 0xff; //id high 8 bit
         std::array<uint8_t, 8> data_buf = {can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00};
+        
+        CANSendFrame send_data;
         send_data.prepare(id, data_buf.data());
-        this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
-        this->read_motor_status();
+        this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
+        
+        this->receive_motor_status();
     }
 
     void refresh_motor_status_all()
@@ -241,15 +244,49 @@ class MotorControl
         return;
     }
     
+    double get_position(std::string motor_name)
+    {
+        auto it = this->motors_.find(motor_name);
+        if (it != this->motors_.end()) {
+            return it->second.get_position();
+        } else {
+            throw std::runtime_error("Name does not exist!");
+        }
+    }
+
+    double get_velocity(std::string motor_name)
+    {
+        auto it = this->motors_.find(motor_name);
+        if (it != this->motors_.end()) {
+            return it->second.get_velocity();
+        } else {
+            throw std::runtime_error("Name does not exist!");
+        }
+    }
+
+    double get_torque(std::string motor_name)
+    {
+        auto it = this->motors_.find(motor_name);
+        if (it != this->motors_.end()) {
+            return it->second.get_torque();
+        } else {
+            throw std::runtime_error("Name does not exist!");
+        }
+    }
+
     void control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau)
     {
+        MotorID slave_id;
+        LimitParam limit_param_cmd;
+
         // check and get motor from map
         auto it = this->motors_.find(motor_name);
         if (it != this->motors_.end()) {
-            MotorID slave_id = it->second.get_slave_id();
-            LimitParam limit_param_cmd = it->second.get_limit_param();
+            slave_id = it->second.get_slave_id();
+            limit_param_cmd = it->second.get_limit_param();
         } else {
             throw std::runtime_error("Name does not exist!");
+            return;
         }
 
         // map linearly to given bounds
@@ -275,33 +312,39 @@ class MotorControl
         send_data.prepare(slave_id, data_buf.data());
 
         // send to data
-        this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+        this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
 
         return;
     }
 
-    void read_motor_status()
+    void receive_motor_status()
     {
         CANReceiveFrame receive_data;
 
-        int rc = this->serial_.read((uint8_t*)&receive_data, 0xAA, sizeof(CANReceiveFrame));
+        // get data from port buffer
+        int rc = this->serial_->read((uint8_t*)&receive_data, 0xAA, sizeof(CANReceiveFrame));
         if (rc <= 0) {
+            fprintf(stderr, "[ ERROR ] Could not receive motor status");
             return;
         }
-
+        
+        // unpack data
         if(receive_data.CMD == 0x11 && receive_data.frameEnd == 0x55) // receive success
         {
             auto & data = receive_data.canData;
-
-            auto it = this->lut_slave_id_to_motor_name_.find(receive_data.canId);
-            if (it != this->lut_slave_id_to_motor_name_.end()) {
-                std::string motor_name = it->second;
+            
+            std::string motor_name;
+            
+            auto it = this->lut_master_id_to_motor_name_.find(receive_data.canId);
+            if (it != this->lut_master_id_to_motor_name_.end()) {
+                motor_name = it->second;
             } else {
+                fprintf(stderr, "[ ERROR ] Could not find motor by ID");
                 return; // handle error
             }
 
-            Motor motor = this->motors_.at(motor_name);
-            LimitParam limit_param_receive = motor.get_limit_param();
+            Motor* motor = &this->motors_.at(motor_name);
+            LimitParam limit_param_receive = motor->get_limit_param();
 
             uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
             uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
@@ -310,9 +353,10 @@ class MotorControl
             double receive_dq = uint_to_double(dq_uint, -limit_param_receive.dq, limit_param_receive.dq, 12);
             double receive_tau = uint_to_double(tau_uint, -limit_param_receive.tau, limit_param_receive.tau, 12);
             
-            motor.set_position(receive_q);
-            motor.set_velocity(receive_dq);
-            motor.set_tau(receive_tau);
+            // update stored states
+            motor->set_position(receive_q);
+            motor->set_velocity(receive_dq);
+            motor->set_torque(receive_tau);
         }
 
         return;
@@ -334,7 +378,7 @@ class MotorControl
     double uint_to_double(uint16_t x, double xmin, double xmax, uint8_t bits)
     {
         double span = xmax - xmin;
-        double data_norm = double(x) / ((1 << bits) - 1);
+        double data_norm = static_cast<double>(x) / ((1 << bits) - 1);
         double data = data_norm * span + xmin;
         return data;
     }
@@ -349,14 +393,14 @@ class MotorControl
         send_data.prepare(id, data_buf.data());
         
         // send frame
-        this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+        this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
     }
 
 
     // 
-    SerialPort serial_;
+    std::optional<SerialPort> serial_;
     std::unordered_map<std::string, Motor> motors_;
-    std::unordered_map<MotorID, std::string> lut_slave_id_to_motor_name_;
+    std::unordered_map<MotorID, std::string> lut_master_id_to_motor_name_;
 };
 
 };

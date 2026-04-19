@@ -15,17 +15,16 @@ set(HW_IF_INCLUDE_DEPENDS
   hardware_interface
 )
 
-find_package(pinocchio REQUIRED)
-
 # Specify the required version of ros2_control
 find_package(controller_manager 4.0.0)
 # Handle the case where the required version is not found
 if(NOT controller_manager_FOUND)
-  message(FATAL_ERROR "ros2_control version 4.0.0 or higher is required. "
-  "Are you using the correct branch of the ros2_control_demos repository?")
+message(FATAL_ERROR "ros2_control version 4.0.0 or higher is required. "
+"Are you using the correct branch of the ros2_control_demos repository?")
 endif()
 
 # find dependencies
+find_package(pinocchio REQUIRED)
 find_package(backward_ros REQUIRED)
 find_package(ament_cmake REQUIRED)
 foreach(Dependency IN ITEMS ${HW_IF_INCLUDE_DEPENDS})

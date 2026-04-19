@@ -34,7 +34,6 @@
 #include "damiao.h"
 #include <memory>
 
-
 using hardware_interface::return_type;
 
 namespace damiao_hardware_interface
@@ -44,39 +43,45 @@ using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface
 class RobotSystem : public hardware_interface::SystemInterface
 {
     public:
-        CallbackReturn on_init(
-        const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
-        CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
+    CallbackReturn on_init(
+    const hardware_interface::HardwareComponentInterfaceParams & params) override;
 
-        return_type read(const rclcpp::Time & time, const rclcpp::Duration & period) override;
-
-        return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
-
+    CallbackReturn on_configure(const rclcpp_lifecycle::State & previous_state) override;
+    
+    return_type read(const rclcpp::Time & time, const rclcpp::Duration & period) override;
+    
+    return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
+    
     protected:
-        std::shared_ptr<SerialPort> serial;
-        damiao::Motor_Control dm;
-        std::vector<damiao::Motor> motors;
 
-        std::vector<float> motor_kp_;
-        std::vector<float> motor_kd_;
+    return_type read_manipulator();
+    return_type read_gripper();
+    
+    return_type write_manipulator();
+    return_type write_gripper();
 
-        bool use_gravity_compensation_;
-        bool use_free_floating_;
+    
+    // gripper kinematics
+    const double gear_pinion_rot_to_lin = -0.007;
+    const double gear_pinion_lin_to_rot = 142.857142857;
+    
+    std::vector<std::string> manipulator_joint_names_;
+    std::vector<std::string> gripper_joint_names_;
 
-        // const float gear_pinion_module = 0.001f;
-        // const float gear_pinion_number_teeth = 14.0f;
-        // (-0.5f)*(this->gear_pinion_module*this->gear_pinion_number_teeth);
-        // 1.0f / this->gear_pinion_rot_to_lin;
-        const float gear_pinion_rot_to_lin = -0.007f;
-        const float gear_pinion_lin_to_rot = 142.857142857f;
+    // motor control
+    std::optional<damiao::MotorControl> mc;
+    std::string port_;
+    int baudrate_;
+    std::vector<double> motor_kp_;
+    std::vector<double> motor_kd_;
 
-        float gripper_hold_position_ = 0.0f;   // rotational position to hold on stall
-        bool  gripper_force_closure_ = false;   // latched stall flag
-        int  gripper_force_closure_counter_ = 0;
+    // pinocchio
+    pinocchio::Model pin_model_;
+    pinocchio::Data  pin_data_;
 
-        pinocchio::Model pin_model_;
-        pinocchio::Data  pin_data_;
+    // flags
+    bool use_gravity_compensation_;
 
 };
 

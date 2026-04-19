@@ -3,40 +3,40 @@
 
 #include <termios.h>
 #include <sys/select.h>
-#include <string>
-#include <string.h>
+#include <sys/time.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
-#include <linux/serial.h>
 #include <unistd.h>
-#include <iostream>
-#include <memory>
-#include <chrono>
+#include <cstdint>
+#include <array>
 #include <queue>
+// #include <deque>
 
 class SerialPort
 {
     public:
 
-    SerialPort(std::string port, speed_t baudrate, time_t timeout_ms = 2)
+    SerialPort(const char* port, speed_t baudrate, time_t timeout_ms = 10)
     {
         // open serial port
         int fd = this->open_serial_port(port);
         if (fd < 0) {
-            // handle error
+            fprintf(stderr, "[ ERROR ] Unable to open serial port!\n");
+        } else {
+            fprintf(stderr, "[ INFO ] Serial port opened!\n");
         }
         
         // configure sertial port
         int rc = this->configure_serial_port(fd, baudrate);
         if (!rc) {
-            // hangle error
+            fprintf(stderr, "[ ERROR ] Unable to configure serial port!\n");
+        } else {
+            fprintf(stderr, "[ INFO ] Serial port configured!\n");
         }
 
         this->fd_ = fd;
 
-        // set timeout
-        this->timeout_.tv_sec = timeout_ms / 1000;
-        this->timeout_.tv_usec = (timeout_ms % 1000) * 1000;
+        // timeout
+        this->timeout_ms_ = timeout_ms;
 
         return;
     }
@@ -55,19 +55,15 @@ class SerialPort
     {
         // wait for data to arrive, or break after timeout
         int ret = this->wait_for_data();
-        if (ret == 0) {
-            return 0;   // timeout
-        }
-        else if (ret < 0) {
-            return -1;  // error
-        }
+        if (ret == 0) return 0; // timeout
+        if (ret < 0) return -1; // error
 
         // read data
         ssize_t recv_len = ::read(this->fd_, this->recv_buf_.data(), len);
 
         // populate queue
         for (int i = 0; i < recv_len; i++) {
-            this->recv_queue_.push(recv_buf[i]);
+            this->recv_queue_.push(this->recv_buf_[i]);
         }
 
         // search for head frame byte
@@ -98,46 +94,44 @@ class SerialPort
 
     private:
 
-    int open_serial_port(std::string port)
+    int open_serial_port(const char* port)
     {
-        int fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+        // int fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+        int fd = open(port, O_RDWR | O_NOCTTY);
         return fd;
     }
 
-    int configure_serial_port(int fd, int baudrate)
+    bool configure_serial_port(int fd, speed_t baudrate)
     {
         struct termios tty;
+        memset(&tty, 0, sizeof(tty));
+        
         if (tcgetattr(fd, &tty) != 0) {
             return false;
         }
-
+        
         cfsetispeed(&tty, baudrate);
         cfsetospeed(&tty, baudrate);
 
-        tty.c_cflag
-            = (tty.c_cflag & ~CSIZE) | CS8; // 8-bit characters
-        tty.c_iflag &= ~IGNBRK; // disable break processing
-        tty.c_lflag = 0; // no signaling chars, no echo, no
-                        // canonical processing
         tty.c_oflag = 0; // no remapping, no delays
+        
+        tty.c_cflag &= ~CSIZE;
+        tty.c_cflag |= CS8; // 8
+        tty.c_cflag &= ~PARENB; // no parity
+        tty.c_cflag &= ~CSTOPB; // 1 stop bit
+        
+        tty.c_iflag = 0;
+        tty.c_iflag &= ~INPCK; // no parity
+        
+        tty.c_lflag = 0;
+        tty.c_lflag |= CBAUDEX; 
+
         tty.c_cc[VMIN] = 0; // read doesn't block
         tty.c_cc[VTIME] = 0; // non-blocking
 
-        tty.c_iflag &= ~(IXON | IXOFF
-                        | IXANY); // shut off xon/xoff ctrl
-
-        tty.c_cflag
-            |= (CLOCAL | CREAD); // ignore modem controls,
-                                // enable reading
-        tty.c_cflag &= ~(PARENB | PARODD); // shut off parity
-        tty.c_cflag &= ~CSTOPB;
-        tty.c_cflag &= ~CRTSCTS;
-        
         tcflush(fd, TCIFLUSH);
 
         if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-            cerr << "Error from tcsetattr: " << strerror(errno)
-                << endl;
             return false;
         }
         return true;
@@ -146,14 +140,20 @@ class SerialPort
 
     int wait_for_data()
     {
-        FD_ZERO(this->(&read_fds_));
-        FD_SET(this->fd_, this->(&read_fds_));
+        FD_ZERO(&this->read_fds_);
+        FD_SET(this->fd_, &this->read_fds_);
 
-        return select(fd_ + 1, &readFds, nullptr, nullptr, this->(&timeout_));
+        // reset timeout
+        timeout_.tv_sec = this->timeout_ms_ / 1000;
+        timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
+
+        return select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &timeout_);
     }
 
     int fd_;
     fd_set read_fds_;
+
+    time_t timeout_ms_;
     timeval timeout_;
 
     std::queue<uint8_t> recv_queue_;
