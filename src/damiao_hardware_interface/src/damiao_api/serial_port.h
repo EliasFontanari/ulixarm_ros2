@@ -47,49 +47,107 @@ class SerialPort
 
     ssize_t write(const uint8_t* data, size_t len)
     {
-        return ::write(this->fd_, data, len);;
+        return ::write(this->fd_, data, len);
     }
 
-    int read(uint8_t* data, uint8_t head, ssize_t len)
+
+    int read(uint8_t* data, uint8_t head, uint8_t end, ssize_t len)
     {
-        // wait for data to arrive, or break after timeout
-        int ret = this->wait_for_data();
-        if (ret == 0) return 0; // timeout
-        if (ret < 0) return -1; // error
-
-        // read data
-        ssize_t recv_len = ::read(this->fd_, this->recv_buf_.data(), len);
-
-        // populate queue
-        for (int i = 0; i < recv_len; i++) {
-            this->recv_queue_.push(this->recv_buf_[i]);
-        }
-
-        // search for head frame byte
-        while (this->recv_queue_.size() >= len)
+        // check if port still connected
+        if (this->fd_ < 0)
         {
-            if(this->recv_queue_.front() != head)
-            {
-                this->recv_queue_.pop();
-                continue;
-            }
-            break;
+            fprintf(stderr, "[ ERROR ] Port not connected.");
+            return -1;
         }
 
-        // not enough bytes for the frame
-        if(this->recv_queue_.size() < len) {
-            return 0;
-        }
+        uint8_t byte;
+        ssize_t bytes_read = 0;
 
-        // populate data
-        for(int i = 0; i < len; i++)
+        // read bytes until head is found
+        while (true)
         {
-            data[i] = this->recv_queue_.front();
-            this->recv_queue_.pop();
+            if (!wait_for_byte(&byte))
+                return -1;
+            if (byte == head)
+                break;
         }
+        data[bytes_read] = head;
+        bytes_read += 1;
+
+        // read len - 1 remaining bytes
+        while (bytes_read < len)
+        {
+            if (!wait_for_byte(&byte))
+                return -1;
+            data[bytes_read] = byte;
+            bytes_read += 1;
+        }
+
+        // check if last byte is end
+        if (data[bytes_read - 1] != end)
+            return -1;
 
         return 1;
     }
+    // int read(uint8_t* data, uint8_t head, uint8_t end, ssize_t len)
+    // {
+    //     // check if port still connected
+    //     if (this->fd_ < 0)
+    //     {
+    //         return -1;
+    //     }
+
+    //     // read bytes until head is found
+
+    //     // read len - 1 bytes
+
+    //     // check if last byte is end
+
+    //     // if timeout elapses, return -1
+
+        
+        
+    //     // wait for data to arrive, or break after timeout
+    //     struct pollfd pfd { this->fd_, POLLIN, 0 };
+    //     int ret = poll(&pfd, 1, this->timeout_ms_);
+    //     if (ret > 0 && !(pfd.revents & POLLIN))
+    //     {
+    //         return -1; // error event
+    //     }
+
+    //     // read data
+    //     ssize_t recv_len = ::read(this->fd_, this->recv_buf_.data(), len);
+
+    //     // populate queue
+    //     for (int i = 0; i < recv_len; i++) {
+    //         this->recv_queue_.push(this->recv_buf_[i]);
+    //     }
+
+    //     // search for head frame byte
+    //     while (this->recv_queue_.size() >= len)
+    //     {
+    //         if(this->recv_queue_.front() != head)
+    //         {
+    //             this->recv_queue_.pop();
+    //             continue;
+    //         }
+    //         break;
+    //     }
+
+    //     // not enough bytes for the frame
+    //     if(this->recv_queue_.size() < len) {
+    //         return 0;
+    //     }
+
+    //     // populate data
+    //     for(int i = 0; i < len; i++)
+    //     {
+    //         data[i] = this->recv_queue_.front();
+    //         this->recv_queue_.pop();
+    //     }
+
+    //     return 1;
+    // }
 
     private:
 
@@ -137,17 +195,33 @@ class SerialPort
     }
 
 
-    int wait_for_data()
+    bool wait_for_byte(uint8_t* out)
     {
         FD_ZERO(&this->read_fds_);
         FD_SET(this->fd_, &this->read_fds_);
 
-        // reset timeout
-        timeout_.tv_sec = this->timeout_ms_ / 1000;
-        timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
+        this->timeout_.tv_sec = this->timeout_ms_ / 1000;
+        this->timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
 
-        return select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &timeout_);
+        int ret = select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &this->timeout_);
+        if (ret <= 0)
+            return false; // timeout or error
+
+        ssize_t n = ::read(this->fd_, out, 1);
+        return n == 1;
     }
+
+    // int wait_for_data()
+    // {
+    //     FD_ZERO(&this->read_fds_);
+    //     FD_SET(this->fd_, &this->read_fds_);
+
+    //     // reset timeout
+    //     timeout_.tv_sec = this->timeout_ms_ / 1000;
+    //     timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
+
+    //     return select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &timeout_);
+    // }
 
     int fd_;
     fd_set read_fds_;

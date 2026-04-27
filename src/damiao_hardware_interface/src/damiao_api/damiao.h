@@ -20,38 +20,50 @@ using MotorID = uint32_t;
 
 struct CANReceiveFrame
 {
-    uint8_t FrameHeader;
-    uint8_t CMD;
-    uint8_t canDataLen: 6;
-    uint8_t canIde: 1;
-    uint8_t canRtr: 1;
-    uint32_t canId;
-    uint8_t canData[8];
-    uint8_t frameEnd;
+    uint8_t frame_header;
+    uint8_t cmd;                // Command  0x00: heartbeat
+                                //          0x01: receive fail  0x11: receive success
+                                //          0x02: send fail     0x12: send success
+                                //          0x03: set baudrate fail 0x13: set baudrate success
+                                //          0xEE: communication error, format field contains error code
+                                //          0x08: overvoltage
+                                //          0x09: undervoltage
+                                //          0x0A: overcurrent
+                                //          0x0B: MOS overtemperature
+                                //          0x0C: motor coil overtemperature
+                                //          0x0D: communication loss
+                                //          0x0E: overload
+    uint8_t can_data_len: 6;    // data length
+    uint8_t can_ide: 1;         // 0: standard frame    1: extended frame
+    uint8_t can_rtr: 1;         // 0: data frame        1: remote frame
+    uint32_t can_id;            // ID fed back from the motor
+    uint8_t can_data[8];
+    uint8_t frame_end;          // end of frame
 };
 
 struct CANSendFrame
 {
-    uint8_t FrameHeader[2] = {0x55, 0xAA};
-    uint8_t FrameLen = 0x1e;
-    uint8_t CMD = 0x03;
-    uint32_t sendTimes = 1;
-    uint32_t timeInterval = 10;
-    uint8_t IDType = 0;
-    uint32_t canId=0x01;
-    uint8_t frameType = 0;
-    uint8_t len = 0x08;
-    uint8_t idAcc=0;
-    uint8_t dataAcc=0;
-    uint8_t data[8]={0};
-    uint8_t crc=0;
-
+    uint8_t frame_header[2] = {0x55, 0xAA};     // frame header
+    uint8_t frame_len = 0x1e;                   // frame length
+    uint8_t cmd = 0x03;             // command: 1 = forward CAN data frame
+                                    //          2 = PC–device handshake, device responds OK
+                                    //          3 = non-acknowledged CAN forward, no send-status feedback
+    uint32_t send_times = 1;        // number of times to send
+    uint32_t time_interval = 10;    // time interval (ms)       NOTE: not used for send_times = 1
+    uint8_t id_type = 0;            // ID type: 0 = standard frame  1 = extended frame
+    uint32_t can_id = 0x01;         // CAN ID — uses the motor ID as the CAN ID
+    uint8_t frame_type = 0;         // frame type: 0 = data frame  1 = remote frame
+    uint8_t len = 0x08;             // payload length
+    uint8_t id_acc = 0;
+    uint8_t data_acc = 0;
+    uint8_t data[8] = {0};
+    uint8_t crc = 0;                // not parsed — any value accepted
+ 
     void prepare(const MotorID id, const uint8_t* send_data)
     {
-        canId = id;
+        can_id = id;
         std::copy(send_data, send_data+8, data);
     }
-
 };
 
 #pragma pack(pop)
@@ -82,11 +94,11 @@ class Motor
 {
 public:
 
-    Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id)
-    : motor_type_(motor_type)
-    , slave_id_(slave_id)
-    , master_id_(master_id)
-    , limit_param_(damiao::limit_params[motor_type])
+    Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id) : 
+    motor_type_(motor_type), 
+    slave_id_(slave_id), 
+    master_id_(master_id), 
+    limit_param_(damiao::limit_params[motor_type])
     {}
 
     Motor() = default;
@@ -96,20 +108,20 @@ public:
     MotorID get_master_id() const { return this->master_id_; }
     MotorID get_slave_id()  const { return this->slave_id_; }
 
-    double get_position() const { return this->state_q_; }
-    void set_position(double q) { this->state_q_ = q; }
+    double  get_position() const { return this->state_q_; }
+    void    set_position(double q) { this->state_q_ = q; }
     
-    double get_velocity() const { return this->state_dq_; }
-    void set_velocity(double dq) { this->state_dq_ = dq; }
+    double  get_velocity() const { return this->state_dq_; }
+    void    set_velocity(double dq) { this->state_dq_ = dq; }
     
-    double get_torque() const { return this->state_tau_; }
-    void set_torque(double tau) { this->state_tau_ = tau; }
+    double  get_torque() const { return this->state_tau_; }
+    void    set_torque(double tau) { this->state_tau_ = tau; }
 
-    double get_trot() const { return this->state_trot_; }
-    void set_trot(double trot) { this->state_trot_ = trot; }
+    uint8_t  get_trot() const { return this->state_trot_; }
+    void    set_trot(uint8_t trot) { this->state_trot_ = trot; }
     
-    double get_tmos() const { return this->state_tmos_; }
-    void set_tmos(double tmos) { this->state_tmos_ = tmos; }
+    uint8_t  get_tmos() const { return this->state_tmos_; }
+    void    set_tmos(uint8_t tmos) { this->state_tmos_ = tmos; }
     
     LimitParam get_limit_param() const { return this->limit_param_; }
 
@@ -123,8 +135,8 @@ private:
     double state_q_  = 0.0;
     double state_dq_ = 0.0;
     double state_tau_= 0.0;
-    double state_trot_ = 0.0;
-    double state_tmos_ = 0.0;
+    uint8_t state_trot_ = 0;
+    uint8_t state_tmos_ = 0;
 };
 
 
@@ -213,7 +225,7 @@ class MotorControl
         send_data.prepare(id, data_buf.data());
         this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
         
-        this->receive_motor_status();
+        this->receive_motor_data();
     }
 
     void refresh_motor_status_all()
@@ -255,7 +267,7 @@ class MotorControl
         }
     }
 
-    void control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau)
+    int control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau)
     {
         MotorID slave_id;
         LimitParam limit_param_cmd;
@@ -266,8 +278,8 @@ class MotorControl
             slave_id = it->second.get_slave_id();
             limit_param_cmd = it->second.get_limit_param();
         } else {
-            throw std::runtime_error("Name does not exist!");
-            return;
+            fprintf(stderr, "[ ERROR ] motor_name '%s' not found!\n", motor_name.data());
+            return -1;
         }
 
         // map linearly to given bounds
@@ -278,7 +290,7 @@ class MotorControl
         uint16_t tau_uint   = double_to_uint(tau, -limit_param_cmd.tau, limit_param_cmd.tau, 12);
 
         // pack data
-        std::array<uint8_t, 8> data_buf{};
+        const std::array<uint8_t, 8> data_buf{};
         data_buf[0] = (q_uint >> 8) & 0xff;
         data_buf[1] = q_uint & 0xff;
         data_buf[2] = dq_uint >> 4;
@@ -288,69 +300,71 @@ class MotorControl
         data_buf[6] = ((kd_uint & 0xf) << 4) | ((tau_uint >> 8) & 0xf);
         data_buf[7] = tau_uint & 0xff;
 
-        // pack CAN frame
-        CANSendFrame send_data;
-        send_data.prepare(slave_id, data_buf.data());
-
-        // send to data
-        this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
+        // send data
+        this->send_motor_data(slave_id, data_buf);
 
         // recveive motor response
-        this->receive_motor_status();
-
-        return;
+        return this->receive_motor_data();
+    }
+    
+    void send_motor_data(uint8_t slave_id, const std::array<uint8_t,    8>& data_buf)
+    {
+        CANSendFrame send_data;
+        send_data.prepare(slave_id, data_buf.data());
+        
+        this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
     }
 
-    void receive_motor_status()
+    int receive_motor_data()
     {
         CANReceiveFrame receive_data;
 
         // get data from port buffer
-        int rc = this->serial_->read((uint8_t*)&receive_data, 0xAA, sizeof(CANReceiveFrame));
-        if (rc <= 0) {
+        int rc = this->serial_->read((uint8_t*)&receive_data, 0xAA, 0x55, sizeof(CANReceiveFrame));
+        if (rc < 0) {
             fprintf(stderr, "[ ERROR ] Could not receive motor status");
-            return;
+            return -1;
         }
-        
+
         // unpack data
-        if(receive_data.CMD == 0x11 && receive_data.frameEnd == 0x55) // receive success
+        switch (receive_data.cmd)
         {
-            auto & data = receive_data.canData;
-            
-            std::string motor_name;
-            
-            auto it = this->lut_master_id_to_motor_name_.find(receive_data.canId);
-            if (it != this->lut_master_id_to_motor_name_.end()) {
-                motor_name = it->second;
-            } else {
-                fprintf(stderr, "[ ERROR ] Could not find motor by ID");
-                return; // handle error
-            }
-
-            Motor* motor = &this->motors_.at(motor_name);
-            LimitParam limit_param_receive = motor->get_limit_param();
-
-            uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
-            uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
-            uint16_t tau_uint = (uint16_t(data[4] & 0xf) << 8) | data[5];
-            double receive_q = uint_to_double(q_uint, -limit_param_receive.q, limit_param_receive.q, 16);
-            double receive_dq = uint_to_double(dq_uint, -limit_param_receive.dq, limit_param_receive.dq, 12);
-            double receive_tau = uint_to_double(tau_uint, -limit_param_receive.tau, limit_param_receive.tau, 12);
-            
-            // update stored states
-            motor->set_position(receive_q);
-            motor->set_velocity(receive_dq);
-            motor->set_torque(receive_tau);
+        case 0x11:  // success
+            return this->unpack_motor_data(&receive_data);            
+        case 0x01:
+            fprintf(stderr, "[ ERROR ] Receive fail.");
+            return -1;
+        case 0x02:
+            fprintf(stderr, "[ ERROR ] Send fail.");
+            return -1;
+        case 0xEE:
+            fprintf(stderr, "[ ERROR ] Communication Error.");
+            return -1;
+        case 0x08:
+            fprintf(stderr, "[ ERROR ] Overvoltage.");
+            return -1;
+        case 0x09:
+            fprintf(stderr, "[ ERROR ] Undercurrent.");
+            return -1;
+        case 0x0B:
+            fprintf(stderr, "[ ERROR ] MOS overtemperature.");
+            return -1;
+        case 0x0C:
+            fprintf(stderr, "[ ERROR ] motor coil overtemperature.");
+            return -1;
+        case 0x0D:
+            fprintf(stderr, "[ ERROR ] communication loss.");
+            return -1;
+        case 0x0E:
+            fprintf(stderr, "[ ERROR ] overload.");
+            return -1;
+        default:
+            return -1;
         }
-
-        return;
     }
 
     private:
 
-    /************************
-     *        UTILS
-     ************************/
     uint16_t double_to_uint(double x, double xmin, double xmax, uint8_t bits)
     {
         double span = xmax - xmin;
@@ -364,6 +378,44 @@ class MotorControl
         double data_norm = static_cast<double>(x) / ((1 << bits) - 1);
         double data = data_norm * span + xmin;
         return data;
+    }
+
+    int unpack_motor_data(CANReceiveFrame* receive_data)
+    {
+        std::string motor_name;
+        
+        auto it = this->lut_master_id_to_motor_name_.find(receive_data->canId);
+        if (it != this->lut_master_id_to_motor_name_.end()) {
+            motor_name = it->second;
+        } else {
+            fprintf(stderr, "[ ERROR ] Could not find motor by ID");
+            return -1; // handle error
+        }
+        
+        Motor* motor = &this->motors_.at(motor_name);
+        LimitParam limit_param_receive = motor->get_limit_param();
+        
+        auto & data = receive_data->can_data;
+
+        uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
+        uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
+        uint16_t tau_uint = (uint16_t(data[4] & 0xf) << 8) | data[5];
+        uint8_t tmos = data[6];
+        uint8_t trot = data[7];
+        
+        double receive_q = uint_to_double(q_uint, -limit_param_receive.q, limit_param_receive.q, 16);
+        double receive_dq = uint_to_double(dq_uint, -limit_param_receive.dq, limit_param_receive.dq, 12);
+        double receive_tau = uint_to_double(tau_uint, -limit_param_receive.tau, limit_param_receive.tau, 12);
+        
+        // update stored states
+        motor->set_position(receive_q);
+        motor->set_velocity(receive_dq);
+        motor->set_torque(receive_tau);
+        
+        motor->set_tmos(tmos);
+        motor->set_trot(trot);
+
+        return 1;
     }
 
     void send_control_cmd(MotorID id , uint8_t cmd)

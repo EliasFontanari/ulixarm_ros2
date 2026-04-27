@@ -38,37 +38,6 @@ namespace damiao_hardware_interface
             RCLCPP_INFO(get_logger(), "Pinocchio model build.");
         }
 
-        // Load motor params Kp and Kd
-        {
-            this->motor_kp_.resize(info_.joints.size());
-            this->motor_kd_.resize(info_.joints.size());
-    
-            for (size_t i = 0; i < info_.joints.size(); i++)
-            {
-                const auto & joint = info_.joints[i];
-    
-                // Read Kp
-                if (joint.parameters.find("Kp") != joint.parameters.end())
-                    this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
-                else {
-                    RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kp!", joint.name.data());
-                    return CallbackReturn::ERROR;
-                }
-    
-                // Read Kd
-                if (joint.parameters.find("Kd") != joint.parameters.end())
-                    this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
-                else {
-                    RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kd!", joint.name.data());
-                    return CallbackReturn::ERROR;
-                }
-                
-                RCLCPP_INFO(get_logger(), "Joint '%s' — Kp: %.2f  Kd: %.2f",
-                    joint.name.data(), motor_kp_[i], motor_kd_[i]);
-                    
-            }
-        }
-
         // Load gravity compensation flag
         {
             if (info_.hardware_parameters.find("use_gravity_compensation") != 
@@ -105,6 +74,56 @@ namespace damiao_hardware_interface
             
             RCLCPP_INFO(get_logger(), "Free floating: %s", 
                 this->use_free_floating_ ? "ENABLED" : "DISABLED");
+        }
+
+        // Load motor params Kp and Kd
+        {
+            this->motor_kp_.resize(info_.joints.size());
+            this->motor_kd_.resize(info_.joints.size());
+    
+            for (size_t i = 0; i < info_.joints.size(); i++)
+            {
+                const auto & joint = info_.joints[i];
+    
+                // Read Kp
+                if (joint.parameters.find("Kp") != joint.parameters.end())
+                {
+                    if(this->use_free_floating_)
+                    {
+                        this->motor_kp_[i] = 0.0;
+                    }
+                    else
+                    {
+                        this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
+                    }
+                }
+                else 
+                {
+                    RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kp!", joint.name.data());
+                    return CallbackReturn::ERROR;
+                }
+
+    
+                // Read Kd
+                if (joint.parameters.find("Kd") != joint.parameters.end())
+                {
+                    if(this->use_free_floating_)
+                    {
+                        this->motor_kd_[i] = std::stod(joint.parameters.at("Kd")) * 0.1;
+                    } 
+                    else 
+                    {
+                        this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
+                    }
+                } else {
+                    RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kd!", joint.name.data());
+                    return CallbackReturn::ERROR;
+                }
+                
+                RCLCPP_INFO(get_logger(), "Joint '%s' — Kp: %.2f  Kd: %.2f",
+                    joint.name.data(), motor_kp_[i], motor_kd_[i]);
+                    
+            }
         }
 
         // Load serial params
@@ -242,6 +261,26 @@ namespace damiao_hardware_interface
 
     return_type RobotSystem::read_gripper()
     {
+        // read values from stored data, does not polls from actual hardware
+        // polling to actual hardware happens after write, as motors respond after sending command
+        for (const auto& joint_name : this->gripper_joint_names_)
+        {
+            const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
+            const double pos = this->mc->get_position(joint_name);
+            set_state(name_pos, pos);
+            
+            const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
+            const double vel = this->mc->get_velocity(joint_name);
+            set_state(name_vel, vel);
+
+            // the torque on the motor, NOT the force on the finger
+            const auto name_eff = joint_name + "/" + hardware_interface::HW_IF_EFFORT;
+            const double eff = this->mc->get_torque(joint_name);
+            set_state(name_eff, eff);
+        }
+
+        return return_type::OK;
+
         // const auto name_pos = info_.joints[6].name + "/" + hardware_interface::HW_IF_POSITION;
         // const double pos = this->mc->get_position(info_.joints[6].name) * this->gear_pinion_rot_to_lin;
         // set_state(name_pos, pos);
@@ -315,6 +354,7 @@ namespace damiao_hardware_interface
             tau_gravity = Eigen::VectorXd::Zero(this->manipulator_joint_names_.size());
         }
 
+        int rc;
 
         // send commands
         for (std::size_t i=0; i < this->manipulator_joint_names_.size(); i++)
@@ -329,27 +369,16 @@ namespace damiao_hardware_interface
 
             const double tau_ff = tau_gravity[i];   // feed forward torque
 
-            if (this->use_free_floating_)
-            {
-                this->mc->control_mit(
-                    joint_name,
-                    0.0,
-                    this->motor_kd_[i]*0.1,
-                    0.0,
-                    0.0,
-                    tau_ff
-                );
-            } else {
-                this->mc->control_mit(
-                    joint_name,
-                    this->motor_kp_[i],
-                    this->motor_kd_[i],
-                    pos,
-                    vel,
-                    tau_ff
-                );
-            }
-            
+            rc = this->mc->control_mit(
+                joint_name,
+                this->motor_kp_[i],
+                this->motor_kd_[i],
+                pos,
+                vel,
+                tau_ff
+            );
+
+            if (rc < 0) return return_type::ERROR;
         }
 
         return return_type::OK;
@@ -357,6 +386,14 @@ namespace damiao_hardware_interface
 
     return_type RobotSystem::write_gripper()
     {
+        // get command
+
+        // if command pos < 0.01 -> close
+        //      send mit torque
+        // if command pos > 0.01 -> open
+        //      send mit pos
+
+        
         // const auto name_pos = info_.joints[6].name + "/" + hardware_interface::HW_IF_POSITION;
         // float q7_lin = static_cast<float>(get_command(name_pos));
         // float q7_rot = q7_lin * this->gear_pinion_lin_to_rot;
