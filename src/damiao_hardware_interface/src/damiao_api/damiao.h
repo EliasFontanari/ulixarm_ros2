@@ -203,7 +203,7 @@ class MotorControl
         return;
     }
     
-    void refresh_motor_status(const std::string motor_name)
+    int refresh_motor_status(const std::string motor_name)
     {
         MotorID slave_id;
 
@@ -212,7 +212,7 @@ class MotorControl
             slave_id = it->second.get_slave_id();
         } else {
             throw std::runtime_error("Name does not exist!");
-            return;
+            return -1;
         }
         
         uint32_t id = 0x7FF;
@@ -225,16 +225,19 @@ class MotorControl
         send_data.prepare(id, data_buf.data());
         this->serial_->write((uint8_t*)&send_data, sizeof(CANSendFrame));
         
-        this->receive_motor_data();
+        return this->receive_motor_data();
     }
 
-    void refresh_motor_status_all()
+    int refresh_motor_status_all()
     {
+        int rc;
         for (const auto& [name, motor] : this->motors_) 
         {
-            this->refresh_motor_status(name);
+            rc = this->refresh_motor_status(name);
+            if (rc < 0)
+                return -1;
         }
-        return;
+        return 1;
     }
     
     double get_position(std::string motor_name)
@@ -290,7 +293,7 @@ class MotorControl
         uint16_t tau_uint   = double_to_uint(tau, -limit_param_cmd.tau, limit_param_cmd.tau, 12);
 
         // pack data
-        const std::array<uint8_t, 8> data_buf{};
+        std::array<uint8_t, 8> data_buf{};
         data_buf[0] = (q_uint >> 8) & 0xff;
         data_buf[1] = q_uint & 0xff;
         data_buf[2] = dq_uint >> 4;
@@ -384,7 +387,7 @@ class MotorControl
     {
         std::string motor_name;
         
-        auto it = this->lut_master_id_to_motor_name_.find(receive_data->canId);
+        auto it = this->lut_master_id_to_motor_name_.find(receive_data->can_id);
         if (it != this->lut_master_id_to_motor_name_.end()) {
             motor_name = it->second;
         } else {
