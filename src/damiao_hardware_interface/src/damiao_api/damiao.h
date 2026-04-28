@@ -310,7 +310,7 @@ class MotorControl
         return this->receive_motor_data();
     }
     
-    void send_motor_data(uint8_t slave_id, const std::array<uint8_t,    8>& data_buf)
+    void send_motor_data(uint8_t slave_id, const std::array<uint8_t,8>& data_buf)
     {
         CANSendFrame send_data;
         send_data.prepare(slave_id, data_buf.data());

@@ -266,16 +266,16 @@ namespace damiao_hardware_interface
         for (const auto& joint_name : this->gripper_joint_names_)
         {
             const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
-            const double pos = this->mc->get_position(joint_name);
+            const double pos = this->mc->get_position(joint_name) * this->gear_pinion_rot_to_lin;
             set_state(name_pos, pos);
             
             const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
-            const double vel = this->mc->get_velocity(joint_name);
+            const double vel = this->mc->get_velocity(joint_name) * this->gear_pinion_rot_to_lin;
             set_state(name_vel, vel);
 
             // the torque on the motor, NOT the force on the finger
             const auto name_eff = joint_name + "/" + hardware_interface::HW_IF_EFFORT;
-            const double eff = this->mc->get_torque(joint_name);
+            const double eff = this->mc->get_torque(joint_name) * this->gear_pinion_rot_to_lin;
             set_state(name_eff, eff);
         }
 
@@ -309,7 +309,7 @@ namespace damiao_hardware_interface
         //     this->gripper_force_closure_ = true;
         // }
 
-        return return_type::OK;
+        // return return_type::OK;
     }
 
     return_type RobotSystem::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
@@ -340,7 +340,7 @@ namespace damiao_hardware_interface
             Eigen::VectorXd q = pinocchio::neutral(pin_model_);
             
             // get current q
-            for (std::size_t i=0; i < this->manipulator_joint_names_.size(); i++)
+            for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
             {
                 const auto name_pos = this->manipulator_joint_names_[i] + "/" + hardware_interface::HW_IF_POSITION;
                 q[i] = get_state(name_pos);    
@@ -357,7 +357,7 @@ namespace damiao_hardware_interface
         int rc;
 
         // send commands
-        for (std::size_t i=0; i < this->manipulator_joint_names_.size(); i++)
+        for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
         {
             const auto joint_name = this->manipulator_joint_names_[i];
 
@@ -386,38 +386,37 @@ namespace damiao_hardware_interface
 
     return_type RobotSystem::write_gripper()
     {
-        // get command
+        int rc;
+        const size_t motor_kx_offset = this->manipulator_joint_names_.size();
+        const auto joint_name = this->gripper_joint_names_[0];
+        const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
+        const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
 
-        // if command pos < 0.01 -> close
-        //      send mit torque
-        // if command pos > 0.01 -> open
-        //      send mit pos
+        const double goal_pos_lin  = get_command(name_pos);
+        const double goal_pos_rot  = goal_pos_lin * this->gear_pinion_lin_to_rot;
+        const double state_pos_lin = get_state(name_pos);
+        const double state_vel_lin = get_state(name_vel);
 
-        
-        // const auto name_pos = info_.joints[6].name + "/" + hardware_interface::HW_IF_POSITION;
-        // float q7_lin = static_cast<float>(get_command(name_pos));
-        // float q7_rot = q7_lin * this->gear_pinion_lin_to_rot;
+        const bool closing = (goal_pos_lin < 0.001) && (state_pos_lin > 0.005);
+        const bool stalled = closing && (std::abs(state_vel_lin) < 0.001);
 
-        // // Clamp to valid rotational range
-        // if (q7_rot < -5.0f || q7_rot > 0.0f) {
-        //     q7_rot = std::clamp(q7_rot, -5.0f, 0.0f);
-        // }
+        if (stalled)
+        {
+            // Stalled while closing: apply force closure torque
+            rc = this->mc->control_mit(joint_name, 0.0, this->motor_kd_[motor_kx_offset], 0.0, 0.0, -1.0);
+        }
+        else if (closing)
+        {
+            // Still moving toward close: velocity ramp
+            rc = this->mc->control_mit(joint_name, 0.0, this->motor_kd_[motor_kx_offset], 0.0, 3.0, 0.0);
+        }
+        else
+        {
+            // Open: position control
+            rc = this->mc->control_mit(joint_name, this->motor_kp_[motor_kx_offset], this->motor_kd_[motor_kx_offset], goal_pos_rot, 0.0, 0.0);
+        }
 
-        // // If force closure is latched, hold the position where contact was made
-        // // rather than continuing to push — this keeps grip without grinding
-        // if (this->gripper_force_closure_) {
-        //     q7_rot = this->gripper_hold_position_;
-        // }
-
-        // this->dm.control_mit(
-        //     this->motors[6],
-        //     this->motor_kp_[6],
-        //     this->motor_kd_[6],
-        //     q7_rot,
-        //     0.0f,
-        //     0.0f // tau
-        // );
-
+        if (rc < 0) return return_type::ERROR;
         return return_type::OK;
     }
 

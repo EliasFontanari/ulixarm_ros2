@@ -64,7 +64,7 @@ class RobotSystem : public hardware_interface::SystemInterface
     
     // gripper kinematics
     const double gear_pinion_rot_to_lin = -0.007;
-    const double gear_pinion_lin_to_rot = 142.857142857;
+    const double gear_pinion_lin_to_rot = -142.857142857;
     
     std::vector<std::string> manipulator_joint_names_;
     std::vector<std::string> gripper_joint_names_;
