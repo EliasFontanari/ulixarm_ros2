@@ -70,11 +70,18 @@ class RobotSystem : public hardware_interface::SystemInterface
     std::vector<std::string> gripper_joint_names_;
 
     // motor control
-    std::optional<damiao::MotorControl> mc;
+    damiao::MotorControl mc;
+    
     std::string port_;
     int baudrate_;
+    
     std::vector<double> motor_kp_;
     std::vector<double> motor_kd_;
+    
+    rclcpp::Time stall_start_time_;
+    bool stall_timer_active_ = false;
+    bool stall_latched_ = false;
+    double latched_goal_pos_rot_;
 
     // pinocchio
     pinocchio::Model pin_model_;
