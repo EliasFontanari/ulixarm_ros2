@@ -7,8 +7,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstdint>
-#include <array>
-#include <queue>
 
 class SerialPort
 {
@@ -89,66 +87,7 @@ class SerialPort
 
         return 1;
     }
-    // int read(uint8_t* data, uint8_t head, uint8_t end, ssize_t len)
-    // {
-    //     // check if port still connected
-    //     if (this->fd_ < 0)
-    //     {
-    //         return -1;
-    //     }
-
-    //     // read bytes until head is found
-
-    //     // read len - 1 bytes
-
-    //     // check if last byte is end
-
-    //     // if timeout elapses, return -1
-
-        
-        
-    //     // wait for data to arrive, or break after timeout
-    //     struct pollfd pfd { this->fd_, POLLIN, 0 };
-    //     int ret = poll(&pfd, 1, this->timeout_ms_);
-    //     if (ret > 0 && !(pfd.revents & POLLIN))
-    //     {
-    //         return -1; // error event
-    //     }
-
-    //     // read data
-    //     ssize_t recv_len = ::read(this->fd_, this->recv_buf_.data(), len);
-
-    //     // populate queue
-    //     for (int i = 0; i < recv_len; i++) {
-    //         this->recv_queue_.push(this->recv_buf_[i]);
-    //     }
-
-    //     // search for head frame byte
-    //     while (this->recv_queue_.size() >= len)
-    //     {
-    //         if(this->recv_queue_.front() != head)
-    //         {
-    //             this->recv_queue_.pop();
-    //             continue;
-    //         }
-    //         break;
-    //     }
-
-    //     // not enough bytes for the frame
-    //     if(this->recv_queue_.size() < len) {
-    //         return 0;
-    //     }
-
-    //     // populate data
-    //     for(int i = 0; i < len; i++)
-    //     {
-    //         data[i] = this->recv_queue_.front();
-    //         this->recv_queue_.pop();
-    //     }
-
-    //     return 1;
-    // }
-
+    
     private:
 
     int open_serial_port(const char* port)
@@ -211,26 +150,11 @@ class SerialPort
         return n == 1;
     }
 
-    // int wait_for_data()
-    // {
-    //     FD_ZERO(&this->read_fds_);
-    //     FD_SET(this->fd_, &this->read_fds_);
-
-    //     // reset timeout
-    //     timeout_.tv_sec = this->timeout_ms_ / 1000;
-    //     timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
-
-    //     return select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &timeout_);
-    // }
-
     int fd_;
     fd_set read_fds_;
 
     time_t timeout_ms_;
     timeval timeout_;
-
-    std::queue<uint8_t> recv_queue_;
-    std::array<uint8_t, 1024> recv_buf_;
 
 };
 

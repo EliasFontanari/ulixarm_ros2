@@ -280,36 +280,6 @@ namespace damiao_hardware_interface
         }
 
         return return_type::OK;
-
-        // const auto name_pos = info_.joints[6].name + "/" + hardware_interface::HW_IF_POSITION;
-        // const double pos = this->mc->get_position(info_.joints[6].name) * this->gear_pinion_rot_to_lin;
-        // set_state(name_pos, pos);
-        
-        // const auto name_vel = info_.joints[6].name + "/" + hardware_interface::HW_IF_VELOCITY;
-        // const double vel = this->mc->get_velocity(info_.joints[6].name) * this->gear_pinion_rot_to_lin;
-        // set_state(name_vel, vel);
-        
-        // const auto name_eff = info_.joints[6].name + "/" + hardware_interface::HW_IF_EFFORT;
-        // const double effort_rot = this->mc->get_torque(info_.joints[6].name);
-        // set_state(name_eff, static_cast<double>(effort_rot));
-
-        // // Latch force-closure when effort exceeds threshold
-        // constexpr float EFFORT_THRESHOLD_NM = 0.75f;
-        // if (std::abs(effort_rot) >= EFFORT_THRESHOLD_NM) {
-        //     if (!this->gripper_force_closure_) {
-        //         this->gripper_force_closure_counter_ += 1;
-        //     }
-        // } else {
-        //     this->gripper_force_closure_ = false;
-        //     this->gripper_force_closure_counter_ = 0;
-        // }
-
-        // if (this->gripper_force_closure_counter_ > 10) {
-        //     this->gripper_hold_position_ = this->motors[6].Get_Position(); // in rot
-        //     this->gripper_force_closure_ = true;
-        // }
-
-        // return return_type::OK;
     }
 
     return_type RobotSystem::read(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
