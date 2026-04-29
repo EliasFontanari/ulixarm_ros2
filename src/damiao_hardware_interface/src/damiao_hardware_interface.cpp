@@ -166,12 +166,10 @@ namespace damiao_hardware_interface
         {
 
             // Serial connection
-            try {
-                this->mc.init(this->port_.data(), static_cast<speed_t>(this->baudrate_));
-            } catch (const std::exception & e) {
-                RCLCPP_ERROR(get_logger(), "Failed to open serial port '%s': %s", this->port_.data(), e.what());
+            rc = this->mc.init(this->port_.data(), static_cast<speed_t>(this->baudrate_));
+            if (rc < 0)    
                 return CallbackReturn::ERROR;
-            }
+
             RCLCPP_INFO(get_logger(), "Initialized port: %s - baudrate: %d", this->port_.data(), this->baudrate_);
             
             // Initialize motors
@@ -318,7 +316,7 @@ namespace damiao_hardware_interface
     
     return_type RobotSystem::write_manipulator()
     {
-        // --- set gravity compensation ---------------------------------------------------------------
+        // set gravity compensation
         Eigen::VectorXd tau_gravity;
         if (this->use_gravity_compensation_) 
         {
@@ -339,7 +337,7 @@ namespace damiao_hardware_interface
             tau_gravity = Eigen::VectorXd::Zero(this->manipulator_joint_names_.size());
         }
         
-        // --- set free floating ---------------------------------------------------------------
+        // set free floating gains
         std::vector<double> kp;
         std::vector<double> kd;
         const size_t n_motors = this->manipulator_joint_names_.size() + this->gripper_joint_names_.size();
@@ -360,7 +358,7 @@ namespace damiao_hardware_interface
             }
         }
 
-        // --- send commands ------------------------------------------------------------------
+        // send commands
         int rc;
 
         for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
@@ -368,10 +366,10 @@ namespace damiao_hardware_interface
             const auto joint_name = this->manipulator_joint_names_[i];
 
             const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
-            const double pos    = get_command(name_pos);
+            const double pos = get_command(name_pos);
             
             const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
-            const double vel    = get_command(name_vel);
+            const double vel = get_command(name_vel);
 
             const double tau_ff = tau_gravity[i];   // feed forward torque
 

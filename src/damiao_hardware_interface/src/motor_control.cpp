@@ -100,7 +100,7 @@ int damiao::MotorControl::refresh_motor_status(const std::string motor_name)
     send_data.prepare(id, data_buf.data());
     rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
-        return log_error(ErrorCode::SEND_FAIL);
+        return rc;
 
     rc = this->receive_motor_data();
     if (rc < 0)
@@ -213,7 +213,7 @@ int damiao::MotorControl::send_motor_data(uint8_t slave_id, const std::array<uin
     
     rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
-        return log_error(ErrorCode::SEND_FAIL);
+        return rc;
 
     return to_int(ErrorCode::SUCCESS);
 }
@@ -340,7 +340,7 @@ int damiao::MotorControl::send_control_cmd(damiao::MotorID id , uint8_t cmd)
     // send frame
     rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
-        return log_error(ErrorCode::SEND_FAIL);
+        return rc;
 
     return to_int(ErrorCode::SUCCESS);        
 }

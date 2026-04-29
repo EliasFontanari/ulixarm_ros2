@@ -34,7 +34,13 @@ int damiao::SerialPort::init(const char* port, speed_t baudrate, time_t timeout_
 
 int damiao::SerialPort::write(const uint8_t* data, size_t len)
 {
-    return static_cast<int>(::write(this->fd_, data, len));
+    int rc;
+    
+    rc = static_cast<int>(::write(this->fd_, data, len));
+    if (rc < 0)
+        return log_error(ErrorCode::SEND_FAIL);
+    
+    return to_int(ErrorCode::SUCCESS);
 }
 
 
