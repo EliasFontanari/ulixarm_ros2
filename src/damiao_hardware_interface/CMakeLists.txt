@@ -35,12 +35,15 @@ add_library(
   damiao_hardware_interface
   SHARED
   src/damiao_hardware_interface.cpp
+  src/motor_control.cpp
+  src/motor.cpp
+  src/serial_port.cpp
 )
 
-target_include_directories(damiao_hardware_interface
-  SYSTEM PRIVATE
-  src/damiao_api
-)
+# target_include_directories(damiao_hardware_interface
+#   SYSTEM PRIVATE
+#   src/damiao_api
+# )
 
 target_compile_features(damiao_hardware_interface PUBLIC cxx_std_17)
 target_include_directories(damiao_hardware_interface PUBLIC

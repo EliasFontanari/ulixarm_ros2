@@ -1,6 +1,4 @@
 #include "damiao_hardware_interface/damiao_hardware_interface.hpp"
-#include <string>
-#include <vector>
 
 
 namespace damiao_hardware_interface
@@ -88,14 +86,7 @@ namespace damiao_hardware_interface
                 // Read Kp
                 if (joint.parameters.find("Kp") != joint.parameters.end())
                 {
-                    // if(this->use_free_floating_)
-                    // {
-                    //     this->motor_kp_[i] = 0.0;
-                    // }
-                    // else
-                    // {
-                        this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
-                    // }
+                    this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
                 }
                 else 
                 {
@@ -107,14 +98,7 @@ namespace damiao_hardware_interface
                 // Read Kd
                 if (joint.parameters.find("Kd") != joint.parameters.end())
                 {
-                    // if(this->use_free_floating_)
-                    // {
-                    //     this->motor_kd_[i] = std::stod(joint.parameters.at("Kd")) * 0.1;
-                    // } 
-                    // else 
-                    // {
-                        this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
-                    // }
+                    this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
                 } else {
                     RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kd!", joint.name.data());
                     return CallbackReturn::ERROR;
@@ -184,7 +168,6 @@ namespace damiao_hardware_interface
             // Serial connection
             try {
                 this->mc.init(this->port_.data(), static_cast<speed_t>(this->baudrate_));
-                // this->mc.emplace(this->port_.data(), static_cast<speed_t>(this->baudrate_));
             } catch (const std::exception & e) {
                 RCLCPP_ERROR(get_logger(), "Failed to open serial port '%s': %s", this->port_.data(), e.what());
                 return CallbackReturn::ERROR;
@@ -333,83 +316,83 @@ namespace damiao_hardware_interface
     }
     
     
-    // return_type RobotSystem::write_manipulator()
-    // {
-    //     // --- set gravity compensation ---------------------------------------------------------------
-    //     Eigen::VectorXd tau_gravity;
-    //     if (this->use_gravity_compensation_) 
-    //     {
-    //         Eigen::VectorXd q = pinocchio::neutral(pin_model_);
+    return_type RobotSystem::write_manipulator()
+    {
+        // --- set gravity compensation ---------------------------------------------------------------
+        Eigen::VectorXd tau_gravity;
+        if (this->use_gravity_compensation_) 
+        {
+            Eigen::VectorXd q = pinocchio::neutral(pin_model_);
             
-    //         // get current q
-    //         for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
-    //         {
-    //             const auto name_pos = this->manipulator_joint_names_[i] + "/" + hardware_interface::HW_IF_POSITION;
-    //             q[i] = get_state(name_pos);    
-    //         }
+            // get current q
+            for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
+            {
+                const auto name_pos = this->manipulator_joint_names_[i] + "/" + hardware_interface::HW_IF_POSITION;
+                q[i] = get_state(name_pos);    
+            }
             
-    //         // compute g(q)
-    //         tau_gravity = pinocchio::computeGeneralizedGravity(this->pin_model_, this->pin_data_, q);
-    //     }
-    //     else  // no gravity compensation
-    //     {
-    //         tau_gravity = Eigen::VectorXd::Zero(this->manipulator_joint_names_.size());
-    //     }
+            // compute g(q)
+            tau_gravity = pinocchio::computeGeneralizedGravity(this->pin_model_, this->pin_data_, q);
+        }
+        else  // no gravity compensation
+        {
+            tau_gravity = Eigen::VectorXd::Zero(this->manipulator_joint_names_.size());
+        }
         
-    //     // --- set free floating ---------------------------------------------------------------
-    //     std::vector<double> kp;
-    //     std::vector<double> kd;
-    //     const size_t n_motors = this->manipulator_joint_names_.size() + this->gripper_joint_names_.size();
-    //     kp.resize(n_motors);
-    //     kd.resize(n_motors);
+        // --- set free floating ---------------------------------------------------------------
+        std::vector<double> kp;
+        std::vector<double> kd;
+        const size_t n_motors = this->manipulator_joint_names_.size() + this->gripper_joint_names_.size();
+        kp.resize(n_motors);
+        kd.resize(n_motors);
         
-    //     for (size_t i=0; i<n_motors; i++)
-    //     {
-    //         if (this->use_free_floating_)
-    //         {
-    //             kp[i] = 0.0;
-    //             kd[i] = this->motor_kd_[i] * 0.1;
-    //         }
-    //         else
-    //         {
-    //             kp[i] = this->motor_kp_[i];
-    //             kd[i] = this->motor_kd_[i];
-    //         }
-    //     }
+        for (size_t i=0; i<n_motors; i++)
+        {
+            if (this->use_free_floating_)
+            {
+                kp[i] = 0.0;
+                kd[i] = this->motor_kd_[i] * 0.1;
+            }
+            else
+            {
+                kp[i] = this->motor_kp_[i];
+                kd[i] = this->motor_kd_[i];
+            }
+        }
 
-    //     // --- send commands ------------------------------------------------------------------
-    //     int rc;
+        // --- send commands ------------------------------------------------------------------
+        int rc;
 
-    //     for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
-    //     {
-    //         const auto joint_name = this->manipulator_joint_names_[i];
+        for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
+        {
+            const auto joint_name = this->manipulator_joint_names_[i];
 
-    //         const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
-    //         const double pos    = get_command(name_pos);
+            const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
+            const double pos    = get_command(name_pos);
             
-    //         const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
-    //         const double vel    = get_command(name_vel);
+            const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
+            const double vel    = get_command(name_vel);
 
-    //         const double tau_ff = tau_gravity[i];   // feed forward torque
+            const double tau_ff = tau_gravity[i];   // feed forward torque
 
-    //         rc = this->mc.control_mit(
-    //             joint_name,
-    //             kp[i],
-    //             kd[i],
-    //             pos,
-    //             vel,
-    //             tau_ff
-    //         );
+            rc = this->mc.control_mit(
+                joint_name,
+                kp[i],
+                kd[i],
+                pos,
+                vel,
+                tau_ff
+            );
 
-    //         if (rc < 0) 
-    //             return return_type::ERROR;
-    //     }
+            if (rc < 0) 
+                return return_type::ERROR;
+        }
 
-    //     return return_type::OK;
-    // }
+        return return_type::OK;
+    }
 
-    // return_type RobotSystem::write_gripper()
-    // {
+    return_type RobotSystem::write_gripper()
+    {
     //     int rc = 0;
 
     //     const size_t motor_kx_offset = this->manipulator_joint_names_.size();
@@ -534,8 +517,8 @@ namespace damiao_hardware_interface
     //     }
 
     //     if (rc < 0) return return_type::ERROR;
-    //     return return_type::OK;
-    // }
+        return return_type::OK;
+    }
     
     return_type RobotSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
     {

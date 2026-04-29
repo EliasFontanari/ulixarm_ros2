@@ -31,8 +31,11 @@
 #include <pinocchio/multibody/model.hpp>
 #include <pinocchio/multibody/data.hpp>
 
-#include "damiao.h"
 #include <memory>
+
+// #include "damiao.h"
+#include "motor_control.hpp"
+
 
 using hardware_interface::return_type;
 
@@ -61,23 +64,25 @@ class RobotSystem : public hardware_interface::SystemInterface
     return_type write_manipulator();
     return_type write_gripper();
 
+    std::vector<std::string> manipulator_joint_names_;
+    std::vector<std::string> gripper_joint_names_;
+    
+    // motor control
+    damiao::MotorControl mc;
+    
+    // serial port
+    std::string port_;
+    int baudrate_;
+    
+    // mit controller
+    std::vector<double> motor_kp_;
+    std::vector<double> motor_kd_;
     
     // gripper kinematics
     const double gear_pinion_rot_to_lin = -0.007;
     const double gear_pinion_lin_to_rot = -142.857142857;
-    
-    std::vector<std::string> manipulator_joint_names_;
-    std::vector<std::string> gripper_joint_names_;
 
-    // motor control
-    damiao::MotorControl mc;
-    
-    std::string port_;
-    int baudrate_;
-    
-    std::vector<double> motor_kp_;
-    std::vector<double> motor_kd_;
-    
+    // gripper control
     rclcpp::Time stall_start_time_;
     bool stall_timer_active_ = false;
     bool stall_latched_ = false;
