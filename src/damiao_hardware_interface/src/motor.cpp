@@ -1,11 +1,15 @@
 #include "damiao_hardware_interface/motor.hpp"
 
 
-damiao::LimitParam limit_params[damiao::NUM_OF_MOTORS] = {
-    {12.5, 8.0, 28.0 },  // DM4340
-    {12.5, 30.0, 10.0 }, // DM4310
-    {12.5, 15.0, 3.0}     // DMJ3507
+namespace damiao {
+
+LimitParam limit_params[NUM_OF_MOTORS] = {
+    {12.5,  8.0, 28.0},  // DM4340
+    {12.5, 30.0, 10.0},  // DM4310
+    {12.5, 15.0,  3.0},  // DMJ3507
 };
+
+} // namespace damiao
 
 
 damiao::Motor::Motor(damiao::DMMotorType motor_type, damiao::MotorID slave_id, damiao::MotorID master_id) : 

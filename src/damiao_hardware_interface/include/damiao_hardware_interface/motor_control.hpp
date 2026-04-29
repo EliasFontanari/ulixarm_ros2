@@ -96,6 +96,7 @@ namespace damiao
         int get_torque(std::string motor_name, double& torque);
     
         int control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau);
+        int receive_motor_data();
         
         private:
         
@@ -104,7 +105,6 @@ namespace damiao
         
         int send_motor_data(uint8_t slave_id, const std::array<uint8_t,8>& data_buf);
         int unpack_motor_data(CANReceiveFrame* receive_data);
-        int receive_motor_data();
         int send_control_cmd(damiao::MotorID id , uint8_t cmd);
     
         damiao::SerialPort serial_;

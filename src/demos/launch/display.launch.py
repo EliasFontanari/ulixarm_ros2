@@ -23,7 +23,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
 
-    pkg_share = FindPackageShare('tutorial')
+    pkg_share = FindPackageShare('demos')
     
     # --- Launch Arguments tutorial ---
     rviz_config_arg = DeclareLaunchArgument(

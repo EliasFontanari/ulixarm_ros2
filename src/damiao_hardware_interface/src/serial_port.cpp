@@ -1,5 +1,6 @@
 #include "damiao_hardware_interface/serial_port.hpp"
-
+#include <fcntl.h>
+#include <unistd.h>
 
 damiao::SerialPort::SerialPort()
 {
@@ -91,41 +92,66 @@ int damiao::SerialPort::open_serial_port(const char* port)
     return fd;
 }
 
+
 int damiao::SerialPort::configure_serial_port(int fd, speed_t baudrate)
 {
-    struct termios tty;
-    memset(&tty, 0, sizeof(tty));
-    
+    struct termios tty{};
     if (tcgetattr(fd, &tty) != 0)
         return log_error(ErrorCode::PORT_CONFIG_FAILED);
 
     cfsetispeed(&tty, baudrate);
     cfsetospeed(&tty, baudrate);
 
-    tty.c_oflag = 0; // no remapping, no delays
-    
     tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8; // 8
-    tty.c_cflag &= ~PARENB; // no parity
-    tty.c_cflag &= ~CSTOPB; // 1 stop bit
-    
-    tty.c_iflag = 0;
-    tty.c_iflag &= ~INPCK; // no parity
-    
-    tty.c_lflag = 0;
-    tty.c_lflag |= CBAUDEX; 
+    tty.c_cflag |= CS8;       // 8 data bits
+    tty.c_cflag &= ~PARENB;   // no parity
+    tty.c_cflag &= ~CSTOPB;   // 1 stop bit
+    tty.c_cflag &= ~CRTSCTS;  // no hardware flow control
+    tty.c_cflag |= CREAD;     // enable receiver
+    tty.c_cflag |= CLOCAL;    // ignore modem control lines
 
-    tty.c_cc[VMIN] = 0; // read doesn't block
-    tty.c_cc[VTIME] = 0; // non-blocking
+    tty.c_iflag = 0;          // raw input
+    tty.c_oflag = 0;          // raw output
+    tty.c_lflag = 0;          // raw mode, no echo, no signals
+
+    tty.c_cc[VMIN]  = 0;      // non-blocking read
+    tty.c_cc[VTIME] = 0;
 
     tcflush(fd, TCIFLUSH);
-
     if (tcsetattr(fd, TCSANOW, &tty) != 0)
         return log_error(ErrorCode::PORT_CONFIG_FAILED);
 
     return to_int(ErrorCode::SUCCESS);
 }
 
+// int damiao::SerialPort::configure_serial_port(int fd, speed_t baudrate)
+// {
+//     struct termios tty{};
+//     if (tcgetattr(fd, &tty) != 0)
+//         return log_error(ErrorCode::PORT_CONFIG_FAILED);
+    
+//     cfsetispeed(&tty, baudrate);
+//     cfsetospeed(&tty, baudrate);
+    
+//     tty.c_oflag = 0; // no remapping, no delays
+//     tty.c_cflag &= ~CSIZE;
+//     tty.c_cflag |= CS8; // 8
+//     tty.c_cflag &= ~PARENB; // no parity
+//     tty.c_cflag &= ~CSTOPB; // 1 stop bit
+//     tty.c_iflag = 0;
+//     tty.c_iflag &= ~INPCK; // no parity
+//     tty.c_lflag = 0;
+//     tty.c_lflag |= CBAUDEX; 
+//     tty.c_cc[VMIN] = 0; // read doesn't block
+//     tty.c_cc[VTIME] = 0; // non-blocking
+    
+//     tcflush(fd, TCIFLUSH);
+    
+//     if (tcsetattr(fd, TCSANOW, &tty) != 0)
+//         return log_error(ErrorCode::PORT_CONFIG_FAILED);
+    
+//     return to_int(ErrorCode::SUCCESS);
+// }
 
 int damiao::SerialPort::wait_for_byte(uint8_t* out)
 {

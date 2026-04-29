@@ -86,7 +86,14 @@ namespace damiao_hardware_interface
                 // Read Kp
                 if (joint.parameters.find("Kp") != joint.parameters.end())
                 {
-                    this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
+                    if (this->use_free_floating_)
+                    {
+                        this->motor_kp_[i] = 0.0;
+                    }
+                    else
+                    {
+                        this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
+                    }
                 }
                 else 
                 {
@@ -98,7 +105,14 @@ namespace damiao_hardware_interface
                 // Read Kd
                 if (joint.parameters.find("Kd") != joint.parameters.end())
                 {
-                    this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
+                    if (this->use_free_floating_)
+                    {
+                        this->motor_kd_[i] = std::stod(joint.parameters.at("Kd")) * 0.05;
+                    }
+                    else
+                    {
+                        this->motor_kd_[i] = std::stod(joint.parameters.at("Kd"));
+                    }
                 } else {
                     RCLCPP_ERROR(get_logger(), "Joint '%s' missing Kd!", joint.name.data());
                     return CallbackReturn::ERROR;
@@ -337,27 +351,6 @@ namespace damiao_hardware_interface
             tau_gravity = Eigen::VectorXd::Zero(this->manipulator_joint_names_.size());
         }
         
-        // set free floating gains
-        std::vector<double> kp;
-        std::vector<double> kd;
-        const size_t n_motors = this->manipulator_joint_names_.size() + this->gripper_joint_names_.size();
-        kp.resize(n_motors);
-        kd.resize(n_motors);
-        
-        for (size_t i=0; i<n_motors; i++)
-        {
-            if (this->use_free_floating_)
-            {
-                kp[i] = 0.0;
-                kd[i] = this->motor_kd_[i] * 0.1;
-            }
-            else
-            {
-                kp[i] = this->motor_kp_[i];
-                kd[i] = this->motor_kd_[i];
-            }
-        }
-
         // send commands
         int rc;
 
@@ -375,13 +368,23 @@ namespace damiao_hardware_interface
 
             rc = this->mc.control_mit(
                 joint_name,
-                kp[i],
-                kd[i],
+                this->motor_kp_[i],
+                this->motor_kd_[i],
                 pos,
                 vel,
                 tau_ff
             );
 
+            if (rc < 0) 
+                return return_type::ERROR;
+        }
+
+
+        // recveive motor responses
+        for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
+        {
+            rc = this->mc.receive_motor_data();
+         
             if (rc < 0) 
                 return return_type::ERROR;
         }

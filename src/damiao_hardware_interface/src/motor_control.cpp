@@ -197,10 +197,10 @@ int damiao::MotorControl::control_mit(const std::string motor_name, double kp, d
     if (rc < 0)
         return rc;
 
-    // recveive motor response
-    rc = this->receive_motor_data();
-    if (rc < 0)
-        return rc;
+    // // recveive motor response
+    // rc = this->receive_motor_data();
+    // if (rc < 0)
+    //     return rc;
 
     return to_int(ErrorCode::SUCCESS);
 }
