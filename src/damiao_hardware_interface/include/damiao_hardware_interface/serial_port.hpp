@@ -6,8 +6,9 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstring>
 
-#inlcude "error_codes.hpp"
+#include "damiao_hardware_interface/error_codes.hpp"
 
 namespace damiao
 {
@@ -16,8 +17,8 @@ namespace damiao
     {
     public:
     
-        SerialPort() = default;
-        ~SerialPort() = default;
+        SerialPort();
+        ~SerialPort();
     
         int init(const char* port, speed_t baudrate, time_t timeout_ms = 10);
         int write(const uint8_t* data, size_t len);

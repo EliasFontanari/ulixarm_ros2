@@ -1,7 +1,14 @@
-#include "motor.hpp"
+#include "damiao_hardware_interface/motor.hpp"
 
 
-damiao::Motor::Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id) : 
+damiao::LimitParam limit_params[damiao::NUM_OF_MOTORS] = {
+    {12.5, 8.0, 28.0 },  // DM4340
+    {12.5, 30.0, 10.0 }, // DM4310
+    {12.5, 15.0, 3.0}     // DMJ3507
+};
+
+
+damiao::Motor::Motor(damiao::DMMotorType motor_type, damiao::MotorID slave_id, damiao::MotorID master_id) : 
     motor_type_(motor_type), 
     slave_id_(slave_id), 
     master_id_(master_id), 
@@ -10,16 +17,16 @@ damiao::Motor::Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id
     return;
 }
 
-DMMotorType damiao::Motor::get_motor_type()
+damiao::DMMotorType damiao::Motor::get_motor_type()
 { 
     return this->motor_type_; 
 }
 
-MotorID damiao::Motor::get_master_id()
+damiao::MotorID damiao::Motor::get_master_id()
 { 
     return this->master_id_; 
 }
-MotorID damiao::Motor::get_slave_id()
+damiao::MotorID damiao::Motor::get_slave_id()
 { 
     return this->slave_id_; 
 }
@@ -74,7 +81,7 @@ void damiao::Motor::set_tmos(uint8_t tmos)
     this->state_tmos_ = tmos; 
 }
 
-LimitParam damiao::Motor::get_limit_param()
+damiao::LimitParam damiao::Motor::get_limit_param()
 {
     return this->limit_param_; 
 }

@@ -1,6 +1,9 @@
 #ifndef ULIXARM_HARDWARE__ERROR_CODES_HPP_
 #define ULIXARM_HARDWARE__ERROR_CODES_HPP_
 
+#include <cstdio>
+#include <cstdint>
+
 enum class ErrorCode : int
 {
     SUCCESS                 =  1,

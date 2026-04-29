@@ -1,0 +1,742 @@
+// #ifndef DAMIAO_H
+// #define DAMIAO_H
+
+// #include <utility>
+// #include <variant>
+// #include <cstdint>
+// #include <cmath>
+// #include <vector>
+// #include <array>
+// #include <unordered_map>
+
+// #include <termios.h>
+// #include <sys/select.h>
+// #include <sys/time.h>
+// #include <fcntl.h>
+// #include <unistd.h>
+
+
+// namespace damiao
+// {
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // Error codes
+// // ─────────────────────────────────────────────────────────────────────────────
+// enum class ErrorCode : int
+// {
+//     SUCCESS                     =  1,
+ 
+//     // Serial port errors
+//     PORT_NOT_OPEN           = -1,
+//     PORT_OPEN_FAILED        = -2,
+//     PORT_CONFIG_FAILED      = -3,
+//     WAIT_TIMEOUT            = -4,
+//     WAIT_SELECT_FAILED      = -5,
+//     READ_FAILED             = -6,
+//     WRONG_END_BYTE          = -7,
+ 
+//     // Motor / CAN errors
+//     RECEIVE_FAIL            = -10,
+//     SEND_FAIL               = -11,
+//     COMMUNICATION           = -12,
+//     OVERVOLTAGE             = -13,
+//     UNDERVOLTAGE            = -14,
+//     MOS_OVERTEMPERATURE     = -15,
+//     COIL_OVERTEMPERATURE    = -16,
+//     COMMUNICATION_LOSS      = -17,
+//     OVERLOAD                = -18,
+//     SERIAL_READ             = -19,
+//     MOTOR_NOT_FOUND         = -20,
+//     MASTER_ID_NOT_FOUND     = -21,
+//     UNKNOWN_CMD             = -22,
+// };
+
+// inline int to_int(ErrorCode code) { return static_cast<int>(code); }
+ 
+// inline const char* error_message(ErrorCode code)
+// {
+//     switch (code)
+//     {
+//     case ErrorCode::SUCCESS:                  return "Success.";
+//     // Serial
+//     case ErrorCode::PORT_NOT_OPEN:        return "Port not open.";
+//     case ErrorCode::PORT_OPEN_FAILED:     return "Failed to open serial port.";
+//     case ErrorCode::PORT_CONFIG_FAILED:   return "Failed to configure serial port.";
+//     case ErrorCode::WAIT_TIMEOUT:         return "Timeout waiting for byte.";
+//     case ErrorCode::WAIT_SELECT_FAILED:   return "select() error while waiting for byte.";
+//     case ErrorCode::READ_FAILED:          return "read() returned no data.";
+//     case ErrorCode::WRONG_END_BYTE:       return "Last byte does not match expected end byte.";
+//     // Motor / CAN
+//     case ErrorCode::RECEIVE_FAIL:         return "Receive fail.";
+//     case ErrorCode::SEND_FAIL:            return "Send fail.";
+//     case ErrorCode::COMMUNICATION:        return "Communication error.";
+//     case ErrorCode::OVERVOLTAGE:          return "Overvoltage.";
+//     case ErrorCode::UNDERVOLTAGE:         return "Undervoltage.";
+//     case ErrorCode::MOS_OVERTEMPERATURE:  return "MOS overtemperature.";
+//     case ErrorCode::COIL_OVERTEMPERATURE: return "Motor coil overtemperature.";
+//     case ErrorCode::COMMUNICATION_LOSS:   return "Communication loss.";
+//     case ErrorCode::OVERLOAD:             return "Overload.";
+//     case ErrorCode::SERIAL_READ:          return "Could not receive motor status.";
+//     case ErrorCode::MOTOR_NOT_FOUND:      return "Motor name not found.";
+//     case ErrorCode::MASTER_ID_NOT_FOUND:  return "Could not find motor by master ID.";
+//     case ErrorCode::UNKNOWN_CMD:          return "Unknown command byte received.";
+//     default:                              return "Unknown error.";
+//     }
+// }
+ 
+// // Log an error and return its integer value — used as a one-liner in return statements.
+// inline int log_error(ErrorCode code, const char* extra = nullptr)
+// {
+//     if (extra)
+//         fprintf(stderr, "[ ERROR ] %s — %s\n", error_message(code), extra);
+//     else
+//         fprintf(stderr, "[ ERROR ] %s\n", error_message(code));
+//     return to_int(code);
+// }
+
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // CAN frame structures
+// // ─────────────────────────────────────────────────────────────────────────────
+// using MotorID = uint32_t;
+
+// #pragma pack(push, 1)
+
+// struct CANReceiveFrame
+// {
+//     uint8_t frame_header;
+//     uint8_t cmd;                // Command  0x00: heartbeat
+//                                 //          0x01: receive fail  0x11: receive success
+//                                 //          0x02: send fail     0x12: send success
+//                                 //          0x03: set baudrate fail 0x13: set baudrate success
+//                                 //          0xEE: communication error, format field contains error code
+//                                 //          0x08: overvoltage
+//                                 //          0x09: undervoltage
+//                                 //          0x0A: overcurrent
+//                                 //          0x0B: MOS overtemperature
+//                                 //          0x0C: motor coil overtemperature
+//                                 //          0x0D: communication loss
+//                                 //          0x0E: overload
+//     uint8_t can_data_len: 6;    // data length
+//     uint8_t can_ide: 1;         // 0: standard frame    1: extended frame
+//     uint8_t can_rtr: 1;         // 0: data frame        1: remote frame
+//     uint32_t can_id;            // ID fed back from the motor
+//     uint8_t can_data[8];
+//     uint8_t frame_end;          // end of frame
+// };
+
+// struct CANSendFrame
+// {
+//     uint8_t frame_header[2] = {0x55, 0xAA};     // frame header
+//     uint8_t frame_len = 0x1e;                   // frame length
+//     uint8_t cmd = 0x03;             // command: 1 = forward CAN data frame
+//                                     //          2 = PC–device handshake, device responds OK
+//                                     //          3 = non-acknowledged CAN forward, no send-status feedback
+//     uint32_t send_times = 1;        // number of times to send
+//     uint32_t time_interval = 10;    // time interval (ms)       NOTE: not used for send_times = 1
+//     uint8_t id_type = 0;            // ID type: 0 = standard frame  1 = extended frame
+//     uint32_t can_id = 0x01;         // CAN ID — uses the motor ID as the CAN ID
+//     uint8_t frame_type = 0;         // frame type: 0 = data frame  1 = remote frame
+//     uint8_t len = 0x08;             // payload length
+//     uint8_t id_acc = 0;
+//     uint8_t data_acc = 0;
+//     uint8_t data[8] = {0};
+//     uint8_t crc = 0;                // not parsed — any value accepted
+ 
+//     void prepare(const MotorID id, const uint8_t* send_data)
+//     {
+//         can_id = id;
+//         std::copy(send_data, send_data+8, data);
+//     }
+// };
+
+// #pragma pack(pop)
+
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // SerialPort
+// // ─────────────────────────────────────────────────────────────────────────────
+// class SerialPort
+// {
+//     public:
+
+//     SerialPort() = default;
+    
+//     ~SerialPort()
+//     {
+//         close(this->fd_);
+//     }
+
+//     int init(const char* port, speed_t baudrate, time_t timeout_ms = 10)
+//     {
+//         // open serial port
+//         int fd = this->open_serial_port(port);
+//         if (fd < 0)
+//             return log_error(ErrorCode::PORT_OPEN_FAILED);
+        
+//         // configure sertial port
+//         int rc = this->configure_serial_port(fd, baudrate);
+//         if (rc < 0)
+//             return rc;
+
+//         this->fd_ = fd;
+
+//         // timeout
+//         this->timeout_ms_ = timeout_ms;
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int write(const uint8_t* data, size_t len)
+//     {
+//         return static_cast<int>(::write(this->fd_, data, len));
+//     }
+
+
+//     int read(uint8_t* data, uint8_t head, uint8_t end, ssize_t len)
+//     {
+//         // check if port still connected
+//         if (this->fd_ < 0)
+//             return log_error(ErrorCode::PORT_NOT_OPEN);
+        
+//         int rc;
+//         uint8_t byte;
+//         ssize_t bytes_read = 0;
+
+//         // read bytes until head is found
+//         while (true)
+//         {
+//             rc = wait_for_byte(&byte);
+//             if (rc < 0)
+//                 return rc;
+//             if (byte == head)
+//                 break;
+//         }
+//         data[bytes_read] = head;
+//         bytes_read += 1;
+
+//         // read len - 1 remaining bytes
+//         while (bytes_read < len)
+//         {
+//             rc = wait_for_byte(&byte);
+//             if (rc < 0)
+//                 return rc;
+//             data[bytes_read] = byte;
+//             bytes_read += 1;
+//         }
+
+//         // check if last byte is end
+//         if (data[bytes_read - 1] != end)
+//             return log_error(ErrorCode::WRONG_END_BYTE);
+            
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     private:
+
+//     int open_serial_port(const char* port)
+//     {
+//         // int fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+//         int fd = open(port, O_RDWR | O_NOCTTY);
+//         return fd;
+//     }
+
+//     int configure_serial_port(int fd, speed_t baudrate)
+//     {
+//         struct termios tty;
+//         memset(&tty, 0, sizeof(tty));
+        
+//         if (tcgetattr(fd, &tty) != 0)
+//             return log_error(ErrorCode::PORT_CONFIG_FAILED);
+
+//         cfsetispeed(&tty, baudrate);
+//         cfsetospeed(&tty, baudrate);
+
+//         tty.c_oflag = 0; // no remapping, no delays
+        
+//         tty.c_cflag &= ~CSIZE;
+//         tty.c_cflag |= CS8; // 8
+//         tty.c_cflag &= ~PARENB; // no parity
+//         tty.c_cflag &= ~CSTOPB; // 1 stop bit
+        
+//         tty.c_iflag = 0;
+//         tty.c_iflag &= ~INPCK; // no parity
+        
+//         tty.c_lflag = 0;
+//         tty.c_lflag |= CBAUDEX; 
+
+//         tty.c_cc[VMIN] = 0; // read doesn't block
+//         tty.c_cc[VTIME] = 0; // non-blocking
+
+//         tcflush(fd, TCIFLUSH);
+
+//         if (tcsetattr(fd, TCSANOW, &tty) != 0)
+//             return log_error(ErrorCode::PORT_CONFIG_FAILED);
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+
+//     int wait_for_byte(uint8_t* out)
+//     {
+//         FD_ZERO(&this->read_fds_);
+//         FD_SET(this->fd_, &this->read_fds_);
+
+//         this->timeout_.tv_sec = this->timeout_ms_ / 1000;
+//         this->timeout_.tv_usec = (this->timeout_ms_ % 1000) * 1000;
+
+//         int ret = select(this->fd_ + 1, &this->read_fds_, nullptr, nullptr, &this->timeout_);
+//         if (ret < 0)
+//             return log_error(ErrorCode::WAIT_SELECT_FAILED);
+//         if (ret == 0)
+//             return log_error(ErrorCode::WAIT_TIMEOUT);
+
+//         ssize_t n = ::read(this->fd_, out, 1);
+//         if (n != 1)
+//             return log_error(ErrorCode::READ_FAILED);
+            
+//         return to_int(ErrorCode::SUCCESS);    
+//     }
+
+//     int fd_;
+//     fd_set read_fds_;
+
+//     time_t timeout_ms_;
+//     timeval timeout_;
+
+// };
+
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // Motor types & limits
+// // ─────────────────────────────────────────────────────────────────────────────
+// struct LimitParam
+// {
+//     double q;
+//     double dq;
+//     double tau;
+// };
+
+// enum DMMotorType
+// {
+//     DM4340,
+//     DM4310,
+//     DMJ3507,
+//     NUM_OF_MOTORS
+// };
+
+
+// LimitParam limit_params[NUM_OF_MOTORS] = {
+//     {12.5, 8.0, 28.0 },  // DM4340
+//     {12.5, 30.0, 10.0 }, // DM4310
+//     {12.5, 15.0, 3.0}     // DMJ3507
+// };
+
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // Motor
+// // ─────────────────────────────────────────────────────────────────────────────
+// class Motor
+// {
+// public:
+
+//     Motor(DMMotorType motor_type, MotorID slave_id, MotorID master_id) : 
+//     motor_type_(motor_type), 
+//     slave_id_(slave_id), 
+//     master_id_(master_id), 
+//     limit_param_(damiao::limit_params[motor_type])
+//     {}
+
+//     Motor() = default;
+
+//     DMMotorType get_motor_type() const { return this->motor_type_; }
+
+//     MotorID get_master_id() const { return this->master_id_; }
+//     MotorID get_slave_id()  const { return this->slave_id_; }
+
+//     double  get_position() const { return this->state_q_; }
+//     void    set_position(double q) { this->state_q_ = q; }
+    
+//     double  get_velocity() const { return this->state_dq_; }
+//     void    set_velocity(double dq) { this->state_dq_ = dq; }
+    
+//     double  get_torque() const { return this->state_tau_; }
+//     void    set_torque(double tau) { this->state_tau_ = tau; }
+
+//     uint8_t  get_trot() const { return this->state_trot_; }
+//     void    set_trot(uint8_t trot) { this->state_trot_ = trot; }
+    
+//     uint8_t  get_tmos() const { return this->state_tmos_; }
+//     void    set_tmos(uint8_t tmos) { this->state_tmos_ = tmos; }
+    
+//     LimitParam get_limit_param() const { return this->limit_param_; }
+
+// private:
+//     MotorID slave_id_;
+//     MotorID master_id_;
+//     DMMotorType motor_type_;
+
+//     LimitParam limit_param_{};
+
+//     double state_q_  = 0.0;
+//     double state_dq_ = 0.0;
+//     double state_tau_= 0.0;
+//     uint8_t state_trot_ = 0;
+//     uint8_t state_tmos_ = 0;
+// };
+
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // MotorControl
+// // ─────────────────────────────────────────────────────────────────────────────
+// class MotorControl
+// {
+//     public:
+
+//     MotorControl(){};
+    
+//     ~MotorControl(){};
+
+//     int init(const char* port, speed_t baudrate, time_t timeout_ms = 10)
+//     {
+//         int rc;
+//         rc = this->serial_.init(port, baudrate, timeout_ms);
+//         if (rc < 0)
+//             return rc;
+        
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     void add_motor(const std::string motor_name, const DMMotorType motor_type, 
+//         const MotorID slave_id, const MotorID master_id)
+//     {
+//         Motor motor(motor_type, slave_id, master_id);
+//         this->motors_[motor_name] = motor;
+//         this->lut_master_id_to_motor_name_[master_id] = motor_name;
+//         return;
+//     }
+    
+//     int enable_motor(const std::string motor_name)
+//     {
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             MotorID slave_id = it->second.get_slave_id();
+//             this->send_control_cmd(slave_id, 0xFC);
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int enable_motor_all()
+//     {
+//         int rc;
+
+//         for (const auto& [name, motor] : this->motors_) 
+//         {
+//             rc = this->enable_motor(name);
+//             if (rc < 0)
+//                 return rc;
+//         }
+
+//         return rc;
+//     }
+
+//     int disable_motor(const std::string motor_name)
+//     {
+//         int rc;
+
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             MotorID slave_id = it->second.get_slave_id();
+//             rc = this->send_control_cmd(slave_id, 0xFD);
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         return rc;
+//     }
+
+//     int disable_motor_all()
+//     {
+//         int rc;
+
+//         for (const auto& [name, motor] : this->motors_) 
+//         {
+//             rc = this->disable_motor(name);
+//             if (rc < 0) 
+//                 return rc;
+//         }
+
+//         return rc;
+//     }
+    
+//     int refresh_motor_status(const std::string motor_name)
+//     {
+//         int rc;
+//         MotorID slave_id;
+
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             slave_id = it->second.get_slave_id();
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+        
+//         uint32_t id = 0x7FF;
+        
+//         uint8_t can_low = slave_id & 0xff; // id low 8 bit
+//         uint8_t can_high = (slave_id >> 8) & 0xff; //id high 8 bit
+//         std::array<uint8_t, 8> data_buf = {can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00};
+        
+//         CANSendFrame send_data;
+//         send_data.prepare(id, data_buf.data());
+//         rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+//         if (rc < 0)
+//             return log_error(ErrorCode::SEND_FAIL);
+
+//         rc = this->receive_motor_data();
+//         if (rc < 0)
+//             return rc;
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int refresh_motor_status_all()
+//     {
+//         int rc;
+        
+//         for (const auto& [name, motor] : this->motors_) 
+//         {
+//             rc = this->refresh_motor_status(name);
+//             if (rc < 0)
+//                 return rc;
+//         }
+
+//         return rc;
+//     }
+    
+//     int get_position(std::string motor_name, double& position)
+//     {
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             position = it->second.get_position();
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int get_velocity(std::string motor_name, double& velocity)
+//     {
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             velocity = it->second.get_velocity();
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int get_torque(std::string motor_name, double& torque)
+//     {
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             torque = it->second.get_torque();
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau)
+//     {
+//         int rc;
+//         MotorID slave_id;
+//         LimitParam limit_param_cmd;
+
+//         // check and get motor from map
+//         auto it = this->motors_.find(motor_name);
+//         if (it != this->motors_.end()) {
+//             slave_id = it->second.get_slave_id();
+//             limit_param_cmd = it->second.get_limit_param();
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+
+//         // map linearly to given bounds
+//         uint16_t kp_uint    = double_to_uint(kp, 0, 500, 12);
+//         uint16_t kd_uint    = double_to_uint(kd, 0, 5, 12);
+//         uint16_t q_uint     = double_to_uint(q,   -limit_param_cmd.q,   limit_param_cmd.q,   16);
+//         uint16_t dq_uint    = double_to_uint(dq,  -limit_param_cmd.dq,  limit_param_cmd.dq,  12);
+//         uint16_t tau_uint   = double_to_uint(tau, -limit_param_cmd.tau, limit_param_cmd.tau, 12);
+
+//         // pack data
+//         std::array<uint8_t, 8> data_buf{};
+//         data_buf[0] = (q_uint >> 8) & 0xff;
+//         data_buf[1] = q_uint & 0xff;
+//         data_buf[2] = dq_uint >> 4;
+//         data_buf[3] = ((dq_uint & 0xf) << 4) | ((kp_uint >> 8) & 0xf);
+//         data_buf[4] = kp_uint & 0xff;
+//         data_buf[5] = kd_uint >> 4;
+//         data_buf[6] = ((kd_uint & 0xf) << 4) | ((tau_uint >> 8) & 0xf);
+//         data_buf[7] = tau_uint & 0xff;
+
+//         // send data
+//         rc = this->send_motor_data(slave_id, data_buf);
+//         if (rc < 0)
+//             return rc;
+
+//         // recveive motor response
+//         rc = this->receive_motor_data();
+//         if (rc < 0)
+//             return rc;
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+    
+//     int send_motor_data(uint8_t slave_id, const std::array<uint8_t,8>& data_buf)
+//     {
+//         int rc;
+//         CANSendFrame send_data;
+//         send_data.prepare(slave_id, data_buf.data());
+        
+//         rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+//         if (rc < 0)
+//             return log_error(ErrorCode::SEND_FAIL);
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int receive_motor_data()
+//     {
+//         int rc;
+//         CANReceiveFrame receive_data;
+
+//         // get data from port buffer
+//         rc = this->serial_.read((uint8_t*)&receive_data, 0xAA, 0x55, sizeof(CANReceiveFrame));
+//         if (rc < 0)
+//             return rc;
+
+//         // unpack data
+//         switch (receive_data.cmd)
+//         {
+//         case 0x11:  // success
+//             rc = this->unpack_motor_data(&receive_data);
+//             if (rc < 0)
+//                 return rc;
+//             break;
+
+//         case 0x01:
+//             log_error(ErrorCode::RECEIVE_FAIL);
+//         case 0x02:
+//             log_error(ErrorCode::SEND_FAIL);
+//         case 0xEE:
+//             log_error(ErrorCode::COMMUNICATION);
+//         case 0x08:
+//             log_error(ErrorCode::OVERVOLTAGE);
+//         case 0x09:
+//             log_error(ErrorCode::UNDERVOLTAGE);
+//         case 0x0B:
+//             log_error(ErrorCode::MOS_OVERTEMPERATURE);
+//         case 0x0C:
+//             log_error(ErrorCode::COIL_OVERTEMPERATURE);
+//         case 0x0D:
+//             log_error(ErrorCode::COMMUNICATION_LOSS);
+//         case 0x0E:
+//             log_error(ErrorCode::OVERLOAD);
+//         default:
+//             log_error(ErrorCode::UNKNOWN_CMD);
+//         }       
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     private:
+
+//     uint16_t double_to_uint(double x, double xmin, double xmax, uint8_t bits)
+//     {
+//         double span = xmax - xmin;
+//         double data_norm = std::clamp((x - xmin) / span, 0.0, 1.0);
+//         return static_cast<uint16_t>(data_norm * ((1 << bits) - 1));
+//     }
+
+//     double uint_to_double(uint16_t x, double xmin, double xmax, uint8_t bits)
+//     {
+//         double span = xmax - xmin;
+//         double data_norm = static_cast<double>(x) / ((1 << bits) - 1);
+//         double data = data_norm * span + xmin;
+//         return data;
+//     }
+
+//     int unpack_motor_data(CANReceiveFrame* receive_data)
+//     {
+//         int rc;
+//         std::string motor_name;
+        
+//         auto it = this->lut_master_id_to_motor_name_.find(receive_data->can_id);
+//         if (it != this->lut_master_id_to_motor_name_.end()) {
+//             motor_name = it->second;
+//         } else {
+//             return log_error(ErrorCode::MOTOR_NOT_FOUND);
+//         }
+        
+//         Motor* motor = &this->motors_.at(motor_name);
+//         LimitParam limit_param_receive = motor->get_limit_param();
+        
+//         auto & data = receive_data->can_data;
+
+//         uint16_t q_uint = (uint16_t(data[1]) << 8) | data[2];
+//         uint16_t dq_uint = (uint16_t(data[3]) << 4) | (data[4] >> 4);
+//         uint16_t tau_uint = (uint16_t(data[4] & 0xf) << 8) | data[5];
+//         uint8_t tmos = data[6];
+//         uint8_t trot = data[7];
+        
+//         double receive_q = uint_to_double(q_uint, -limit_param_receive.q, limit_param_receive.q, 16);
+//         double receive_dq = uint_to_double(dq_uint, -limit_param_receive.dq, limit_param_receive.dq, 12);
+//         double receive_tau = uint_to_double(tau_uint, -limit_param_receive.tau, limit_param_receive.tau, 12);
+        
+//         // update stored states
+//         motor->set_position(receive_q);
+//         motor->set_velocity(receive_dq);
+//         motor->set_torque(receive_tau);
+//         motor->set_tmos(tmos);
+//         motor->set_trot(trot);
+
+//         return to_int(ErrorCode::SUCCESS);
+//     }
+
+//     int send_control_cmd(MotorID id , uint8_t cmd)
+//     {
+//         int rc;
+
+//         // pack data with cmd
+//         std::array<uint8_t, 8> data_buf = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd};
+        
+//         // pack CAN frame
+//         CANSendFrame send_data;
+//         send_data.prepare(id, data_buf.data());
+        
+//         // send frame
+//         rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+//         if (rc < 0)
+//             return log_error(ErrorCode::SEND_FAIL);
+
+//         return to_int(ErrorCode::SUCCESS);        
+//     }
+
+
+//     // 
+//     // std::optional<SerialPort> serial_;
+//     damiao::SerialPort serial_;
+//     std::unordered_map<std::string, Motor> motors_;
+//     std::unordered_map<MotorID, std::string> lut_master_id_to_motor_name_;
+// };
+
+// };
+
+// #endif

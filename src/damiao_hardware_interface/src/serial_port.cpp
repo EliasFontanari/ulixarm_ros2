@@ -1,4 +1,4 @@
-#include "serial_port.h"
+#include "damiao_hardware_interface/serial_port.hpp"
 
 
 damiao::SerialPort::SerialPort()
@@ -6,13 +6,13 @@ damiao::SerialPort::SerialPort()
     return;
 }
 
-~damiao::SerialPort::SerialPort()
+damiao::SerialPort::~SerialPort()
 {
     close(this->fd_);
     return;
 }
 
-int damiao::SerialPort::init(const char* port, speed_t baudrate, time_t timeout_ms = 10)
+int damiao::SerialPort::init(const char* port, speed_t baudrate, time_t timeout_ms)
 {
     // open serial port
     int fd = this->open_serial_port(port);

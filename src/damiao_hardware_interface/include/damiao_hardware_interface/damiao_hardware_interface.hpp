@@ -34,7 +34,7 @@
 #include <memory>
 
 // #include "damiao.h"
-#include "motor_control.hpp"
+#include "damiao_hardware_interface/motor_control.hpp"
 
 
 using hardware_interface::return_type;

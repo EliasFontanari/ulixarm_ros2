@@ -1,4 +1,7 @@
-#include "motor_control.hpp"
+#include "damiao_hardware_interface/motor_control.hpp"
+
+#include <algorithm>
+
 
 int damiao::MotorControl::init(const char* port, speed_t baudrate)
 {
@@ -11,7 +14,7 @@ int damiao::MotorControl::init(const char* port, speed_t baudrate)
 }
 
 void damiao::MotorControl::add_motor(const std::string motor_name, const DMMotorType motor_type, 
-    const MotorID slave_id, const MotorID master_id)
+    const damiao::MotorID slave_id, const damiao::MotorID master_id)
 {
     Motor motor(motor_type, slave_id, master_id);
     this->motors_[motor_name] = motor;
@@ -23,7 +26,7 @@ int damiao::MotorControl::enable_motor(const std::string motor_name)
 {
     auto it = this->motors_.find(motor_name);
     if (it != this->motors_.end()) {
-        MotorID slave_id = it->second.get_slave_id();
+        damiao::MotorID slave_id = it->second.get_slave_id();
         this->send_control_cmd(slave_id, 0xFC);
     } else {
         return log_error(ErrorCode::MOTOR_NOT_FOUND);
@@ -52,7 +55,7 @@ int damiao::MotorControl::disable_motor(const std::string motor_name)
 
     auto it = this->motors_.find(motor_name);
     if (it != this->motors_.end()) {
-        MotorID slave_id = it->second.get_slave_id();
+        damiao::MotorID slave_id = it->second.get_slave_id();
         rc = this->send_control_cmd(slave_id, 0xFD);
     } else {
         return log_error(ErrorCode::MOTOR_NOT_FOUND);
@@ -78,7 +81,7 @@ int damiao::MotorControl::disable_motor_all()
 int damiao::MotorControl::refresh_motor_status(const std::string motor_name)
 {
     int rc;
-    MotorID slave_id;
+    damiao::MotorID slave_id;
 
     auto it = this->motors_.find(motor_name);
     if (it != this->motors_.end()) {
@@ -91,11 +94,11 @@ int damiao::MotorControl::refresh_motor_status(const std::string motor_name)
     
     uint8_t can_low = slave_id & 0xff; // id low 8 bit
     uint8_t can_high = (slave_id >> 8) & 0xff; //id high 8 bit
-    std::array<uint8_t, 8> data_buf = {can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00};
+    std::array<uint8_t, 8> data_buf = {{can_low,can_high, 0xCC, 0x00, 0x00, 0x00, 0x00, 0x00}};
     
     CANSendFrame send_data;
     send_data.prepare(id, data_buf.data());
-    rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+    rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
         return log_error(ErrorCode::SEND_FAIL);
 
@@ -159,7 +162,7 @@ int damiao::MotorControl::get_torque(std::string motor_name, double& torque)
 int damiao::MotorControl::control_mit(const std::string motor_name, double kp, double kd, double q, double dq, double tau)
 {
     int rc;
-    MotorID slave_id;
+    damiao::MotorID slave_id;
     LimitParam limit_param_cmd;
 
     // check and get motor from map
@@ -180,17 +183,17 @@ int damiao::MotorControl::control_mit(const std::string motor_name, double kp, d
 
     // pack data
     std::array<uint8_t, 8> data_buf{};
-    data_buf[0] = (q_uint >> 8) & 0xff;
-    data_buf[1] = q_uint & 0xff;
-    data_buf[2] = dq_uint >> 4;
-    data_buf[3] = ((dq_uint & 0xf) << 4) | ((kp_uint >> 8) & 0xf);
-    data_buf[4] = kp_uint & 0xff;
-    data_buf[5] = kd_uint >> 4;
-    data_buf[6] = ((kd_uint & 0xf) << 4) | ((tau_uint >> 8) & 0xf);
-    data_buf[7] = tau_uint & 0xff;
+    data_buf[0] = static_cast<uint8_t>((q_uint >> 8) & 0xff);
+    data_buf[1] = static_cast<uint8_t>(q_uint & 0xff);
+    data_buf[2] = static_cast<uint8_t>(dq_uint >> 4);
+    data_buf[3] = static_cast<uint8_t>(((dq_uint & 0xf) << 4) | ((kp_uint >> 8) & 0xf));
+    data_buf[4] = static_cast<uint8_t>(kp_uint & 0xff);
+    data_buf[5] = static_cast<uint8_t>(kd_uint >> 4);
+    data_buf[6] = static_cast<uint8_t>(((kd_uint & 0xf) << 4) | ((tau_uint >> 8) & 0xf));
+    data_buf[7] = static_cast<uint8_t>(tau_uint & 0xff);
 
     // send data
-    rc = this->send_motor_data(slave_id, data_buf);
+    rc = this->send_motor_data(static_cast<uint8_t>(slave_id), data_buf);
     if (rc < 0)
         return rc;
 
@@ -208,7 +211,7 @@ int damiao::MotorControl::send_motor_data(uint8_t slave_id, const std::array<uin
     CANSendFrame send_data;
     send_data.prepare(slave_id, data_buf.data());
     
-    rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+    rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
         return log_error(ErrorCode::SEND_FAIL);
 
@@ -221,7 +224,7 @@ int damiao::MotorControl::receive_motor_data()
     CANReceiveFrame receive_data;
 
     // get data from port buffer
-    rc = this->serial_.read((uint8_t*)&receive_data, 0xAA, 0x55, sizeof(CANReceiveFrame));
+    rc = this->serial_.read(reinterpret_cast<uint8_t*> (&receive_data), 0xAA, 0x55, sizeof(CANReceiveFrame));
     if (rc < 0)
         return rc;
 
@@ -235,23 +238,32 @@ int damiao::MotorControl::receive_motor_data()
         break;
 
     case 0x01:
-        log_error(ErrorCode::RECEIVE_FAIL);
+        log_error(ErrorCode::RECEIVE_FAIL); 
+        break;
     case 0x02:
-        log_error(ErrorCode::SEND_FAIL);
+        log_error(ErrorCode::SEND_FAIL);    
+        break;
     case 0xEE:
-        log_error(ErrorCode::COMMUNICATION);
+        log_error(ErrorCode::COMMUNICATION);    
+        break;
     case 0x08:
-        log_error(ErrorCode::OVERVOLTAGE);
+        log_error(ErrorCode::OVERVOLTAGE);  
+        break;
     case 0x09:
-        log_error(ErrorCode::UNDERVOLTAGE);
+        log_error(ErrorCode::UNDERVOLTAGE); 
+        break;
     case 0x0B:
-        log_error(ErrorCode::MOS_OVERTEMPERATURE);
+        log_error(ErrorCode::MOS_OVERTEMPERATURE);  
+        break;
     case 0x0C:
-        log_error(ErrorCode::COIL_OVERTEMPERATURE);
+        log_error(ErrorCode::COIL_OVERTEMPERATURE); 
+        break;
     case 0x0D:
-        log_error(ErrorCode::COMMUNICATION_LOSS);
+        log_error(ErrorCode::COMMUNICATION_LOSS);   
+        break;
     case 0x0E:
-        log_error(ErrorCode::OVERLOAD);
+        log_error(ErrorCode::OVERLOAD); 
+        break;
     default:
         log_error(ErrorCode::UNKNOWN_CMD);
     }       
@@ -280,7 +292,6 @@ double damiao::MotorControl::uint_to_double(uint16_t x, double xmin, double xmax
 
 int damiao::MotorControl::unpack_motor_data(CANReceiveFrame* receive_data)
 {
-    int rc;
     std::string motor_name;
     
     auto it = this->lut_master_id_to_motor_name_.find(receive_data->can_id);
@@ -315,19 +326,19 @@ int damiao::MotorControl::unpack_motor_data(CANReceiveFrame* receive_data)
     return to_int(ErrorCode::SUCCESS);
 }
 
-int damiao::MotorControl::send_control_cmd(MotorID id , uint8_t cmd)
+int damiao::MotorControl::send_control_cmd(damiao::MotorID id , uint8_t cmd)
 {
     int rc;
 
     // pack data with cmd
-    std::array<uint8_t, 8> data_buf = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd};
+    std::array<uint8_t, 8> data_buf = {{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd}};
     
     // pack CAN frame
     CANSendFrame send_data;
     send_data.prepare(id, data_buf.data());
     
     // send frame
-    rc = this->serial_.write((uint8_t*)&send_data, sizeof(CANSendFrame));
+    rc = this->serial_.write(reinterpret_cast<uint8_t*> (&send_data), sizeof(CANSendFrame));
     if (rc < 0)
         return log_error(ErrorCode::SEND_FAIL);
 

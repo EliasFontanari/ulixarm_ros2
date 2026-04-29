@@ -8,10 +8,11 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <string>
 
-#include "motor.hpp"
-#include "error_codes.hpp"
-#include "serial_port.h"
+#include "damiao_hardware_interface/motor.hpp"
+#include "damiao_hardware_interface/error_codes.hpp"
+#include "damiao_hardware_interface/serial_port.hpp"
 
 
 #pragma pack(push, 1)
@@ -57,7 +58,7 @@ struct CANSendFrame
     uint8_t data[8] = {0};
     uint8_t crc = 0;                // not parsed — any value accepted
  
-    void prepare(const MotorID id, const uint8_t* send_data)
+    void prepare(const damiao::MotorID id, const uint8_t* send_data)
     {
         can_id = id;
         std::copy(send_data, send_data+8, data);
@@ -78,8 +79,8 @@ namespace damiao
     
         int init(const char* port, speed_t baudrate);
     
-        void add_motor(const std::string motor_name, const DMMotorType motor_type, 
-            const MotorID slave_id, const MotorID master_id);
+        void add_motor(const std::string motor_name, const damiao::DMMotorType motor_type, 
+            const damiao::MotorID slave_id, const damiao::MotorID master_id);
         
         int enable_motor(const std::string motor_name);
         int enable_motor_all();
@@ -104,11 +105,11 @@ namespace damiao
         int send_motor_data(uint8_t slave_id, const std::array<uint8_t,8>& data_buf);
         int unpack_motor_data(CANReceiveFrame* receive_data);
         int receive_motor_data();
-        int send_control_cmd(MotorID id , uint8_t cmd);
+        int send_control_cmd(damiao::MotorID id , uint8_t cmd);
     
         damiao::SerialPort serial_;
         std::unordered_map<std::string, Motor> motors_;
-        std::unordered_map<MotorID, std::string> lut_master_id_to_motor_name_;
+        std::unordered_map<damiao::MotorID, std::string> lut_master_id_to_motor_name_;
     };
     
 } // namespace damiao
