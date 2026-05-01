@@ -327,7 +327,7 @@ namespace damiao_hardware_interface
         return return_type::OK;
     }
     
-    
+
     return_type RobotSystem::write_manipulator()
     {
         // set gravity compensation
@@ -357,11 +357,9 @@ namespace damiao_hardware_interface
         for (size_t i=0; i < this->manipulator_joint_names_.size(); i++)
         {
             const auto joint_name = this->manipulator_joint_names_[i];
-
             const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
-            const double pos = get_command(name_pos);
-            
             const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
+            const double pos = get_command(name_pos);
             const double vel = get_command(name_vel);
 
             const double tau_ff = tau_gravity[i];   // feed forward torque

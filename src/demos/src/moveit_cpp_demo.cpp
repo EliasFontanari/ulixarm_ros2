@@ -18,78 +18,155 @@ int main(int argc, char * argv[])
     // Create the MoveIt MoveGroup Interface
     using moveit::planning_interface::MoveGroupInterface;
     auto move_group_interface = MoveGroupInterface(node, "ulixarm");
+    
+    
+    /// MOVE TO READY ////////////////////////////////////////////////////////////////
+    // {
+    //     move_group_interface.setPlanningPipelineId("pilz_industrial_motion_planner");
+    //     move_group_interface.setPlannerId("PTP");
+    
+    //     move_group_interface.setMaxVelocityScalingFactor(0.2);
+    //     move_group_interface.setMaxAccelerationScalingFactor(0.2);
+    
+    //     move_group_interface.setNamedTarget("ready");
+    
+    //     // Create a plan to that target pose
+    //     auto const [success, plan] = [&move_group_interface]{
+    //         moveit::planning_interface::MoveGroupInterface::Plan msg;
+    //         auto const ok = static_cast<bool>(move_group_interface.plan(msg));
+    //         return std::make_pair(ok, msg);
+    //     }();
+    
+    //     // Execute the plan
+    //     if(success) {
+    //         move_group_interface.execute(plan);
+    //     } else {
+    //         RCLCPP_ERROR(logger, "Planning failed!");
+    //     }
+    // }
 
-    move_group_interface.setPlanningPipelineId("pilz_industrial_motion_planner");
-    move_group_interface.setPlannerId("PTP");
 
-    move_group_interface.setMaxVelocityScalingFactor(0.8);
-    move_group_interface.setMaxAccelerationScalingFactor(0.8);
+    // Define a struct for targets (optional but clean)
+    struct TargetConfig {
+        geometry_msgs::msg::Pose pose;
+        double vel;
+        double acc;
+        std::string planner_id;
+    };
 
-    ///////////////////////////////////////////////////////////////////
-
-    move_group_interface.setNamedTarget("ready");
-
-    // Create a plan to that target pose
-    auto const [success1, plan1] = [&move_group_interface]{
-        moveit::planning_interface::MoveGroupInterface::Plan msg;
-        auto const ok = static_cast<bool>(move_group_interface.plan(msg));
-        return std::make_pair(ok, msg);
-    }();
-
-    // Execute the plan
-    if(success1) {
-        move_group_interface.execute(plan1);
-    } else {
-        RCLCPP_ERROR(logger, "Planning failed!");
-    }
-
-    ///////////////////////////////////////////////////////////////////
-
-    // Set a target Pose
-    auto const target_pose = []{
+    // Helper to create poses
+    auto make_pose = [](double ox, double oy, double oz, double ow,
+                        double px, double py, double pz) {
         geometry_msgs::msg::Pose msg;
-        msg.orientation.x = 0.9324713945388794;
-        msg.orientation.y = 0.05414300039410591;
-        msg.orientation.z = -0.16062791645526886;
-        msg.orientation.w = -0.3189746141433716;
-        msg.position.x = -0.1629757285118103;
-        msg.position.y = 0.20168457925319672;
-        msg.position.z = 0.24026481807231903;
+        msg.orientation.x = ox;
+        msg.orientation.y = oy;
+        msg.orientation.z = oz;
+        msg.orientation.w = ow;
+        msg.position.x = px;
+        msg.position.y = py;
+        msg.position.z = pz;
         return msg;
-    }();
-    move_group_interface.setPoseTarget(target_pose);
+    };
 
-    // Create a plan to that target pose
-    auto const [success2, plan2] = [&move_group_interface]{
-        moveit::planning_interface::MoveGroupInterface::Plan msg;
-        auto const ok = static_cast<bool>(move_group_interface.plan(msg));
-        return std::make_pair(ok, msg);
-    }();
+    // List of targets
+    std::vector<TargetConfig> targets = {
+        // mid pose
+        {
+            make_pose(1.0, 0.0, 0.0, 0.0,  0.0, 0.30, 0.10),
+            0.5, 
+            0.5,
+            "PTP"
+        },
+        
+        // rotate 1
+        {
+            make_pose(0.85, 0.0,  0.5, 0.0,  0.0, 0.30, 0.10),
+            1.0, 
+            0.9,
+            "LIN"
+        },
+        {
+            make_pose(0.85, 0.0, -0.5, 0.0,  0.0, 0.30, 0.10),
+            1.0, 
+            0.9,
+            "LIN"
+        },
 
-    // Execute the plan
-    if(success2) {
-        move_group_interface.execute(plan2);
-    } else {
-        RCLCPP_ERROR(logger, "Planning failed!");
+        // rotate 2
+        {
+            make_pose(0.93, 0.0,  0.0, -0.35,  0.0, 0.30, 0.10),
+            1.0, 
+            0.9,
+            "LIN"
+        },
+        {
+            make_pose(0.85, 0.0,  0.0, 0.5,  0.0, 0.30, 0.10),
+            1.0, 
+            0.9,
+            "LIN"
+        },
+        {
+            make_pose(0.85, 0.0,  0.5, 0.0,  0.0, 0.30, 0.10),
+            1.0, 
+            0.9,
+            "LIN"
+        },
+
+        // mid pose
+        {
+            make_pose(1.0, 0.0, 0.0, 0.0,  0.0, 0.30, 0.10),
+            0.5, 
+            0.5,
+            "LIN"
+        },
+
+        // {
+        //     make_pose(1.0, 0.0, 0.0, 0.0,  0.20, 0.30, 0.10),
+        //     0.5, 
+        //     0.5,
+        //     "PTP"
+        // },
+        // {
+        //     make_pose(1.0, 0.0, 0.0, 0.0,  -0.20, 0.30, 0.10),
+        //     0.8, 
+        //     0.5,
+        //     "LIN"
+        // },
+
+        // {
+        //     make_pose(1.0, 0.0, 0.0, 0.0,  0.20, 0.15, 0.10),
+        //     1.0, 
+        //     1.0,
+        //     "PTP"
+        // },
+        // {
+        //     make_pose(1.0, 0.0, 0.0, 0.0,  -0.20, 0.15, 0.10),
+        //     1.0, 
+        //     1.0,
+        //     "PTP"
+        // },
+    };
+
+    // Loop through targets
+    move_group_interface.setPlanningPipelineId("pilz_industrial_motion_planner");
+
+    for (const auto& target : targets) {
+        move_group_interface.setMaxVelocityScalingFactor(target.vel);
+        move_group_interface.setMaxAccelerationScalingFactor(target.acc);
+        move_group_interface.setPlannerId(target.planner_id);
+
+        move_group_interface.setPoseTarget(target.pose);
+
+        moveit::planning_interface::MoveGroupInterface::Plan plan;
+        bool success = static_cast<bool>(move_group_interface.plan(plan));
+
+        if (success) {
+            move_group_interface.execute(plan);
+        } else {
+            RCLCPP_ERROR(logger, "Planning failed!");
+        }
     }
 
-    //////////////////////////////////////////////////////////////////////
-
-    move_group_interface.setNamedTarget("ready");
-
-    // Create a plan to that target pose
-    auto const [success3, plan3] = [&move_group_interface]{
-        moveit::planning_interface::MoveGroupInterface::Plan msg;
-        auto const ok = static_cast<bool>(move_group_interface.plan(msg));
-        return std::make_pair(ok, msg);
-    }();
-
-    // Execute the plan
-    if(success3) {
-        move_group_interface.execute(plan3);
-    } else {
-        RCLCPP_ERROR(logger, "Planning failed!");
-    }
 
     // Shutdown ROS
     rclcpp::shutdown();
