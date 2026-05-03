@@ -1,3 +1,3 @@
 [submodule "src/ulixarm_description"]
 	path = src/ulixarm_description
-	url = git@github.com:itacarobotics/ulixarm_description.git
+	url = https://github.com/itacarobotics/ulixarm_description.git
