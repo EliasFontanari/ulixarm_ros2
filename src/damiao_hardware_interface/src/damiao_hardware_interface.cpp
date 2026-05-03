@@ -13,7 +13,7 @@ namespace damiao_hardware_interface
 
         // Load robot_description
         {
-            auto node = rclcpp::Node::make_shared("hf_robot_descritption_listener");
+            auto node = rclcpp::Node::make_shared("hi_robot_descritption_listener");
     
             node->declare_parameter("robot_description", std::string(""));
             std::string urdf_string = node->get_parameter("robot_description").get_value<std::string>();
@@ -180,8 +180,11 @@ namespace damiao_hardware_interface
         // Establish connection motor controller with serial
         {
             // Serial connection
-            rc = this->mc.init(this->port_.data(), 
-                static_cast<speed_t>(this->baudrate_), 50);
+            rc = this->mc.init(
+                this->port_.data(), 
+                static_cast<speed_t>(this->baudrate_), 
+                /* timeout_ms */ 50
+            );
             if (rc < 0)    
                 return CallbackReturn::ERROR;
 
