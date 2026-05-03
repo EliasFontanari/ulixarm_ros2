@@ -77,7 +77,7 @@ namespace damiao_hardware_interface
         // Load motor params Kp and Kd
         {
             size_t joints_size = info_.joints.size();
-            if (joints_size < 12)
+            if (joints_size < 2)
             {
                 RCLCPP_ERROR(get_logger(), "Joint size %ld is invalid!", joints_size);
                 return CallbackReturn::ERROR;
