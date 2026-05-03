@@ -77,7 +77,7 @@ namespace damiao
         MotorControl(){};
         ~MotorControl(){};
     
-        int init(const char* port, speed_t baudrate);
+        int init(const char* port, speed_t baudrate, time_t timeout_ms);
     
         void add_motor(const std::string motor_name, const damiao::DMMotorType motor_type, 
             const damiao::MotorID slave_id, const damiao::MotorID master_id);

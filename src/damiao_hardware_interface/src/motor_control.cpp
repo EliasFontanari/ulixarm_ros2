@@ -3,10 +3,10 @@
 #include <algorithm>
 
 
-int damiao::MotorControl::init(const char* port, speed_t baudrate)
+int damiao::MotorControl::init(const char* port, speed_t baudrate, time_t timeout_ms)
 {
     int rc;
-    rc = this->serial_.init(port, baudrate, 10);
+    rc = this->serial_.init(port, baudrate, timeout_ms);
     if (rc < 0)
         return rc;
     

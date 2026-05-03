@@ -76,10 +76,11 @@ namespace damiao_hardware_interface
 
         // Load motor params Kp and Kd
         {
-            this->motor_kp_.resize(info_.joints.size());
-            this->motor_kd_.resize(info_.joints.size());
+            // the -1 is to exclude the gripper
+            this->motor_kp_.resize(info_.joints.size()-1);
+            this->motor_kd_.resize(info_.joints.size()-1);
     
-            for (size_t i = 0; i < info_.joints.size(); i++)
+            for (size_t i = 0; i < info_.joints.size()-1; i++)
             {
                 const auto & joint = info_.joints[i];
     
@@ -178,9 +179,9 @@ namespace damiao_hardware_interface
 
         // Establish connection motor controller with serial
         {
-
             // Serial connection
-            rc = this->mc.init(this->port_.data(), static_cast<speed_t>(this->baudrate_));
+            rc = this->mc.init(this->port_.data(), 
+                static_cast<speed_t>(this->baudrate_), 50);
             if (rc < 0)    
                 return CallbackReturn::ERROR;
 
@@ -198,7 +199,7 @@ namespace damiao_hardware_interface
             
             // Enable motors
             RCLCPP_INFO(get_logger(), "Enabling motors...");
-            
+                        
             rc = this->mc.enable_motor_all();
             if (rc < 0)
                 return CallbackReturn::ERROR;
@@ -238,7 +239,7 @@ namespace damiao_hardware_interface
                 rc = this->mc.get_position(joint_name, pos);
                 if (rc < 0)
                     return CallbackReturn::ERROR;
-                pos = pos * this->gear_pinion_rot_to_lin;
+                pos = pos * this->gear_pinion_rot_to_lin_;
                 set_state(name_pos, pos);
                 set_command(name_pos, pos);
             }
@@ -288,14 +289,14 @@ namespace damiao_hardware_interface
             rc = this->mc.get_position(joint_name, pos);
             if (rc < 0)
                 return return_type::ERROR;
-            pos = pos * this->gear_pinion_rot_to_lin;
+            pos = pos * this->gear_pinion_rot_to_lin_;
             set_state(name_pos, pos);
             
             const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
             rc = this->mc.get_velocity(joint_name, vel);
             if (rc < 0)
                 return return_type::ERROR;
-            vel = vel * this->gear_pinion_rot_to_lin;
+            vel = vel * this->gear_pinion_rot_to_lin_;
             set_state(name_vel, vel);
 
             // the torque on the motor, NOT the force on the finger
@@ -303,7 +304,7 @@ namespace damiao_hardware_interface
             rc = this->mc.get_torque(joint_name, eff);
             if (rc < 0)
                 return return_type::ERROR;
-            eff = eff * this->gear_pinion_rot_to_lin;
+            eff = eff * this->gear_pinion_rot_to_lin_;
             set_state(name_eff, eff);
         }
 
@@ -392,130 +393,34 @@ namespace damiao_hardware_interface
 
     return_type RobotSystem::write_gripper()
     {
-    //     int rc = 0;
+        int rc = 0;
+        const auto joint_name = this->gripper_joint_names_[0];
+        const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
 
-    //     const size_t motor_kx_offset = this->manipulator_joint_names_.size();
-    //     const auto joint_name = this->gripper_joint_names_[0];
+        const double goal_pos_lin = get_command(name_pos);
+        const double goal_pos_rot = goal_pos_lin * this->gear_pinion_lin_to_rot_;
+        
+        const double state_pos_lin = get_state(name_pos);
+        
+        const double error = std::abs(goal_pos_lin-state_pos_lin); // [ m ]
+        const double kp = std::clamp(-4.375*error + 0.3, 0.125, 0.3); // values from heuristics
+        const double kd = std::clamp(0.5*error, 0.0, 0.02); // values from heuristics
+        
+        rc = this->mc.control_mit(
+            joint_name,
+            kp,
+            kd,
+            goal_pos_rot,
+            0.0,
+            0.0
+        );
+        if (rc < 0)
+            return return_type::ERROR;
+        
+        rc = this->mc.receive_motor_data();
+        if (rc < 0)
+            return return_type::ERROR;
 
-    //     const auto name_pos = joint_name + "/" + hardware_interface::HW_IF_POSITION;
-    //     const auto name_vel = joint_name + "/" + hardware_interface::HW_IF_VELOCITY;
-
-    //     const double goal_pos_lin  = get_command(name_pos);
-    //     const double state_pos_lin = get_state(name_pos);
-    //     const double state_pos_rot = state_pos_lin * this->gear_pinion_lin_to_rot;
-    //     const double state_vel_lin = get_state(name_vel);
-
-    //     const double goal_pos_rot_cmd = goal_pos_lin * this->gear_pinion_lin_to_rot;
-
-    //     // ----------------------------
-    //     // thresholds
-    //     // ----------------------------
-    //     const double pos_threshold_far = 0.001;
-    //     const double vel_threshold     = 0.001;
-    //     const double stall_timeout     = 0.1;
-
-    //     const bool closing_cmd = std::abs(goal_pos_lin) < 1e-4;
-    //     const bool opening_cmd = !closing_cmd;
-
-    //     const bool far_from_zero = state_pos_lin > pos_threshold_far;
-    //     const bool low_velocity  = std::abs(state_vel_lin) < vel_threshold;
-
-    //     // ----------------------------
-    //     // stall timer
-    //     // ----------------------------
-    //     if (closing_cmd && far_from_zero && low_velocity)
-    //     {
-    //         if (!stall_timer_active_)
-    //         {
-    //             stall_timer_active_ = true;
-    //             stall_start_time_ = get_clock()->now();
-    //         }
-    //     }
-    //     else
-    //     {
-    //         stall_timer_active_ = false;
-    //     }
-
-    //     const bool stalled =
-    //         closing_cmd &&
-    //         far_from_zero &&
-    //         stall_timer_active_ &&
-    //         (get_clock()->now() - stall_start_time_).seconds() >= stall_timeout;
-
-    //     // ----------------------------
-    //     // Latch logic (IMPORTANT CHANGE)
-    //     // ----------------------------
-    //     if (stalled && !stall_latched_)
-    //     {
-    //         RCLCPP_INFO(get_logger(), "Stall confirmed → latching goal");
-
-    //         latched_goal_pos_rot_ = state_pos_rot - 0.04;
-    //         stall_latched_ = true;
-    //     }
-
-    //     // reset latch if opening
-    //     if (opening_cmd)
-    //     {
-    //         stall_latched_ = false;
-    //     }
-
-    //     // ----------------------------
-    //     // control logic
-    //     // ----------------------------
-    //     if (closing_cmd)
-    //     {
-    //         if (stall_latched_)
-    //         {
-    //             // HOLD force closure target (DO NOT recompute)
-    //             rc = this->mc.control_mit(
-    //                 joint_name,
-    //                 this->motor_kp_[motor_kx_offset],
-    //                 this->motor_kd_[motor_kx_offset],
-    //                 latched_goal_pos_rot_,
-    //                 0.0,
-    //                 0.0
-    //             );
-    //         }
-    //         else if (far_from_zero)
-    //         {
-    //             // constant velocity closing (FIXED SIGN AS REQUESTED)
-    //             const double closing_velocity = 0.3;
-
-    //             rc = this->mc.control_mit(
-    //                 joint_name,
-    //                 0.0,
-    //                 this->motor_kd_[motor_kx_offset],
-    //                 0.0,
-    //                 closing_velocity,
-    //                 0.0
-    //             );
-    //         }
-    //         else
-    //         {
-    //             // near goal → position control to 0
-    //             rc = this->mc.control_mit(
-    //                 joint_name,
-    //                 this->motor_kp_[motor_kx_offset],
-    //                 this->motor_kd_[motor_kx_offset],
-    //                 0.0,
-    //                 0.0,
-    //                 0.0
-    //             );
-    //         }
-    //     }
-    //     else if (opening_cmd)
-    //     {
-    //         rc = this->mc.control_mit(
-    //             joint_name,
-    //             this->motor_kp_[motor_kx_offset],
-    //             this->motor_kd_[motor_kx_offset],
-    //             goal_pos_rot_cmd,
-    //             0.0,
-    //             0.0
-    //         );
-    //     }
-
-    //     if (rc < 0) return return_type::ERROR;
         return return_type::OK;
     }
     

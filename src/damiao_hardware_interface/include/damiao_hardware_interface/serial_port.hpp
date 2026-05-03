@@ -17,7 +17,7 @@ namespace damiao
         SerialPort();
         ~SerialPort();
     
-        int init(const char* port, speed_t baudrate, time_t timeout_ms = 10);
+        int init(const char* port, speed_t baudrate, time_t timeout_ms);
         int write(const uint8_t* data, size_t len);
         int read(uint8_t* data, uint8_t head, uint8_t end, ssize_t len);
     

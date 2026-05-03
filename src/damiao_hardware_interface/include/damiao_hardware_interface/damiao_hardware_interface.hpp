@@ -79,20 +79,14 @@ class RobotSystem : public hardware_interface::SystemInterface
     std::vector<double> motor_kd_;
     
     // gripper kinematics
-    const double gear_pinion_rot_to_lin = -0.007;
-    const double gear_pinion_lin_to_rot = -142.857142857;
-
-    // gripper control
-    rclcpp::Time stall_start_time_;
-    bool stall_timer_active_ = false;
-    bool stall_latched_ = false;
-    double latched_goal_pos_rot_;
+    const double gear_pinion_rot_to_lin_ = -0.007;
+    const double gear_pinion_lin_to_rot_ = -142.857142857;
 
     // pinocchio
     pinocchio::Model pin_model_;
     pinocchio::Data  pin_data_;
 
-    // flags
+    // interactive flags
     bool use_gravity_compensation_;
     bool use_free_floating_;
 
