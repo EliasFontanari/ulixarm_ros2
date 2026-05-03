@@ -77,6 +77,14 @@ class RobotSystem : public hardware_interface::SystemInterface
     // mit controller
     std::vector<double> motor_kp_;
     std::vector<double> motor_kd_;
+    std::vector<double> motor_kd_limits = {
+        20.0, 400.0,
+        20.0, 400.0,
+        20.0, 400.0,
+        10.0, 200.0,
+        10.0, 200.0,
+        10.0, 200.0
+    };
     
     // gripper kinematics
     const double gear_pinion_rot_to_lin_ = -0.007;

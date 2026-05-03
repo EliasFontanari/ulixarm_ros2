@@ -76,11 +76,20 @@ namespace damiao_hardware_interface
 
         // Load motor params Kp and Kd
         {
+            size_t joints_size = info_.joints.size();
+            if (joints_size < 12)
+            {
+                RCLCPP_ERROR(get_logger(), "Joint size %ld is invalid!", joints_size);
+                return CallbackReturn::ERROR;
+            }
+
             // the -1 is to exclude the gripper
-            this->motor_kp_.resize(info_.joints.size()-1);
-            this->motor_kd_.resize(info_.joints.size()-1);
+            this->motor_kp_.resize(joints_size-1);
+            this->motor_kd_.resize(joints_size-1);
+
+            double kp;
     
-            for (size_t i = 0; i < info_.joints.size()-1; i++)
+            for (size_t i = 0; i < joints_size-1; i++)
             {
                 const auto & joint = info_.joints[i];
     
@@ -93,7 +102,19 @@ namespace damiao_hardware_interface
                     }
                     else
                     {
-                        this->motor_kp_[i] = std::stod(joint.parameters.at("Kp"));
+                        kp = std::stod(joint.parameters.at("Kp"));
+
+                        if (kp < motor_kd_limits[2 * i] || kp > motor_kd_limits[2 * i + 1])
+                        {
+                            RCLCPP_ERROR(get_logger(),
+                                "Joint '%s' Kp value %.2f is out of bounds [%.2f, %.2f]!",
+                                joint.name.data(), kp,
+                                motor_kd_limits[2 * i],
+                                motor_kd_limits[2 * i + 1]);
+                            return CallbackReturn::ERROR;
+                        }
+
+                        this->motor_kp_[i] = kp;
                     }
                 }
                 else 
