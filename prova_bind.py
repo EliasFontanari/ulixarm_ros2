@@ -14,16 +14,16 @@ def load_joint_names(urdf_path: Path) -> list[str]:
 	return joint_list
 
 
-def write_motor(joints_pos,joints_vel,torques,kps,kds):
-    for i, joint_name in enumerate(joint_names):
-        status = mc.control_mit(joint_name, joints_pos[i], joints_vel[i], torques[i], kps[i], kds[i])
-        if status < 0:
-            print(f"Errore durante il controllo del motore {joint_name}: {status}")
-            exit(1)
+# def write_motor(joints_pos,joints_vel,torques,kps,kds):
+#     for i, joint_name in enumerate(joint_names):
+#         status = mc.control_mit(joint_name, joints_pos[i], joints_vel[i], torques[i], kps[i], kds[i])
+#         if status < 0:
+#             print(f"Errore durante il controllo del motore {joint_name}: {status}")
+#             exit(1)
             
-    # ricevere dati motore
-    for _ in range(len(joint_names)):
-        mc.receive_motor_data()
+#     # ricevere dati motore
+#     for _ in range(len(joint_names)):
+#         mc.receive_motor_data()
         
 print("Inizio prova bind")
 
