@@ -1,8 +1,11 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
+import numpy as np
 
 import damiao_motor_control as dmc
 
+kp_list = [100.0, 100.0, 100.0, 80.0, 80.0, 80.0, 50.0]
+kd_list = [0.5,0.5,0.5,0.3,0.3,0.3,0.1]
 
 def load_joint_names(urdf_path: Path) -> list[str]:
 	root = ET.parse(urdf_path).getroot()
@@ -11,6 +14,17 @@ def load_joint_names(urdf_path: Path) -> list[str]:
 	return joint_list
 
 
+def write_motor(joints_pos,joints_vel,torques,kps,kds):
+    for i, joint_name in enumerate(joint_names):
+        status = mc.control_mit(joint_name, joints_pos[i], joints_vel[i], torques[i], kps[i], kds[i])
+        if status < 0:
+            print(f"Errore durante il controllo del motore {joint_name}: {status}")
+            exit(1)
+            
+    # ricevere dati motore
+    for _ in range(len(joint_names)):
+        mc.receive_motor_data()
+        
 print("Inizio prova bind")
 
 urdf_path =	"src/ulixarm_description/src/ulixarm_description/urdf/robot.urdf"
@@ -21,7 +35,7 @@ for name in joint_names:
 print(f"Totale joint: {len(joint_names)}")
 
 
-# on_init equivalent
+# on_init/configure equivalent
 print("Creazione oggetto MotorControl")
 mc = dmc.MotorControl()
 print("Creazione oggetto MotorControl riuscita")
@@ -55,13 +69,28 @@ else:    print("Abilitazione dei motori riuscita")
 print("Refreshing dei motori")
 status = mc.refresh_motor_status_all()
 
+print("Lettura motori per inizializzare stato interno")
+for i in range(len(joint_names)):
+    print(i)
+    status = mc.receive_motor_data()
+    if status < 0:
+        print(f"Errore durante la ricezione dei dati del motore {joint_names[i]}: {status}")
+        exit(1)
+
+pos = 0.
+print(f'Posizioni iniziali dei motori: [{mc.get_position(joint_names[0])}, \
+                                        {mc.get_position(joint_names[1])}, \
+                                        {mc.get_position(joint_names[2])}, \
+                                        {mc.get_position(joint_names[3])}, \
+                                        {mc.get_position(joint_names[4])}, \
+                                        {mc.get_position(joint_names[5])}, \
+                                        {mc.get_position(joint_names[6])}]')
+
 if status < 0:
     print(f"Errore durante il refresh dei motori: {status}")
     exit(1)
 else:
     print("Refresh dei motori riuscito")
+    
 
-for joint_name in joint_names:
-    pos = 0.
-    status = mc.get_position(joint_name,pos)
 
